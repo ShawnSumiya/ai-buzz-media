@@ -168,10 +168,12 @@ Output valid JSON only, no markdown code fences or extra text.`;
 /**
  * 既存会話の文脈と商品情報から、1〜3件の新規コメントを生成する
  * 毎回新しい人格（属性）でコメントを返す
+ * @param options.systemInstruction - 指定時はデフォルトのシステムプロンプトを上書き
  */
 export async function generateStreamComments(
   context: string[],
-  productInfo: string
+  productInfo: string,
+  options?: { systemInstruction?: string }
 ): Promise<TranscriptTurn[]> {
   const contextText =
     context.length > 0
@@ -207,7 +209,8 @@ Output a single JSON object with one key:
 
 id, timestamp は不要。Output valid JSON only.`;
 
-  const text = await generateJSON(prompt, SYSTEM_INSTRUCTION);
+  const systemInstruction = options?.systemInstruction ?? SYSTEM_INSTRUCTION;
+  const text = await generateJSON(prompt, systemInstruction);
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
   const parsed = JSON.parse(cleaned) as {
     comments: { speaker_name: string; speaker_attribute: string; content: string }[];

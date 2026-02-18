@@ -6,28 +6,67 @@ import type { TranscriptTurn } from "@/types/promo";
 
 interface ExtractedProduct {
   product_name: string;
+  manufacturer: string;
+  model_number: string;
   price: string;
   selling_point: string;
+  key_specs: string;
 }
 
+/** スレッドタイトルは必ず商品名（またはメーカー+商品）を含める。曖昧な「話題の商品」禁止。 */
 function buildThreadTitle(p: ExtractedProduct): string {
-  const baseName = p.product_name || "このページの目玉商品";
+  const baseName = [p.manufacturer, p.product_name].filter(Boolean).join(" ") || "このページの目玉商品";
   if (p.price) {
-    return `【急げ】${baseName} が ${p.price} になってるんだがｗ`;
+    return `【悲報】${baseName}、${p.price}だけど性能がヤバいと話題にｗｗｗ`;
   }
-  return `【話題】${baseName} がアツすぎる件`;
+  return `【悲報】${baseName}、高すぎるけどアツすぎると話題にｗｗｗ`;
 }
 
+/** AIに渡す商品情報。会話内で具体的に言及するよう強調する。 */
 function buildProductInfoForComments(p: ExtractedProduct, url: string): string {
-  return [
-    `商品/キャンペーン名: ${p.product_name}`,
-    p.price ? `価格: ${p.price}` : null,
-    `推しポイント: ${p.selling_point}`,
+  const lines = [
+    "★以下の情報を会話内に必ず具体的に織り交ぜること★",
+    "",
+    `【商品名】${p.product_name}`,
+    p.manufacturer ? `【メーカー】${p.manufacturer}` : null,
+    p.model_number ? `【型番】${p.model_number}` : null,
+    p.price ? `【価格】${p.price}` : null,
+    p.key_specs ? `【主なスペック/特徴】${p.key_specs}` : null,
+    `【推しポイント】${p.selling_point}`,
+    "",
     `参照URL: ${url}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].filter(Boolean);
+  return lines.join("\n");
 }
+
+/** 会話生成用：具体的な商品名・スペックを出し、抽象語（これ・それ・あれ）を減らす */
+const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitter)に書き込む本物の人間です。商品スレを見てリアルに反応する。
+
+【絶対守ること】
+- 敬語禁止。タメ口・ネットスラング必須（「マジか」「これ神」「うわ」「ｗ」「（笑）」など）
+- 短文中心。1文が長くなりすぎるな
+- 適度に誤字、「w」「（笑）」「！」の連打を混ぜてリアリティを出す
+
+【★重要：具体的に話すこと★】
+- 「これ」「それ」「あれ」などの抽象的な指示語を極力使うな。必ず「商品名」「メーカー名」「型番」などを直接出すこと
+- スクレイピングした商品情報（価格、スペック、型番、特徴）を、レスの中に自然に織り交ぜること
+- 読者が会話だけ見ても「何の商品の話か」すぐ分かるようにせよ
+
+【悪い例】
+「これすごいね！欲しいわ」「それマジでヤバい」「あれ買おうかな」
+
+【良い例】
+「Ankerの新型、ついに来たか！10000mAhでこの軽さは反則だろw」
+「Dysonの新作ドライヤー高いけど、風量ヤバすぎて吹き飛んだ」
+「M3チップでこの値段はバグだろ...」
+
+【ペルソナ多様性】
+全員ハイテンションだと嘘っぽい。以下を混ぜろ:
+- 冷静に評価するオタク
+- 金欠だけど欲しい学生
+- 様子見してる慎重派（でも最後は欲しくなる）
+
+Output valid JSON only, no markdown code fences or extra text.`;
 
 function generateUniqueUserNames(count: number): string[] {
   const jpAdjectives = [
@@ -177,9 +216,12 @@ export async function GET(req: Request) {
       あなたは厳格なデータ抽出AIです。
       出力は必ず以下のJSONフォーマットのみを返してください。Markdownのコードブロックは不要です。
       {
-        "product_name": "商品名（必須）",
-        "price": "価格（不明なら空文字）",
-        "selling_point": "魅力的なポイントや特徴（50文字以内）"
+        "product_name": "商品名（必須・具体的に）",
+        "manufacturer": "メーカー名・ブランド名（例: Anker, Dyson, Apple）（不明なら空文字）",
+        "model_number": "型番（例: A1234, PowerCore 10000）（不明なら空文字）",
+        "price": "価格（例: 9,800円、30%OFF）（不明なら空文字）",
+        "selling_point": "魅力的なポイントや特徴（50文字以内）",
+        "key_specs": "主なスペック・数値・特徴（例: 10000mAh、軽量150g、M3チップ）（50文字以内、不明なら空文字）"
       }
     `;
 
@@ -198,10 +240,13 @@ export async function GET(req: Request) {
     const extracted: ExtractedProduct = {
       product_name:
         String(parsed.product_name ?? "").trim() || "このページの注目商品",
+      manufacturer: String(parsed.manufacturer ?? "").trim(),
+      model_number: String(parsed.model_number ?? "").trim(),
       price: parsed.price == null ? "" : String(parsed.price).trim(),
       selling_point:
         String(parsed.selling_point ?? "").trim() ||
         "ページで紹介されている目玉商品・キャンペーンです。",
+      key_specs: String(parsed.key_specs ?? "").trim(),
     };
 
     // 3: 無限サクラ会話の初期10件を生成
@@ -211,7 +256,8 @@ export async function GET(req: Request) {
     while (comments.length < 10) {
       const batch = await generateStreamComments(
         comments.map((c) => `${c.speaker_name}「${c.content}」`),
-        productInfoForComments
+        productInfoForComments,
+        { systemInstruction: CRON_COMMENTS_SYSTEM_INSTRUCTION }
       );
       if (!batch.length) break;
       comments.push(...batch);
@@ -235,7 +281,10 @@ export async function GET(req: Request) {
     const keyFeaturesLines = [
       `【抽出された目玉情報】`,
       `- 商品/キャンペーン名: ${extracted.product_name}`,
+      extracted.manufacturer ? `- メーカー: ${extracted.manufacturer}` : null,
+      extracted.model_number ? `- 型番: ${extracted.model_number}` : null,
       extracted.price ? `- 価格: ${extracted.price}` : null,
+      extracted.key_specs ? `- 主なスペック: ${extracted.key_specs}` : null,
       `- 推しポイント: ${extracted.selling_point}`,
     ].filter(Boolean);
 
