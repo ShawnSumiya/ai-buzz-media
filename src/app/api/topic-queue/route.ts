@@ -17,6 +17,8 @@ export async function POST(request: NextRequest) {
     const rawUrl = typeof body?.url === "string" ? body.url.trim() : "";
     const affiliateUrl =
       typeof body?.affiliate_url === "string" ? body.affiliate_url.trim() : null;
+    const context =
+      typeof body?.context === "string" ? body.context.trim() || null : null;
 
     if (!rawUrl) {
       return NextResponse.json(
@@ -30,9 +32,10 @@ export async function POST(request: NextRequest) {
       .insert({
         url: rawUrl,
         affiliate_url: affiliateUrl || null,
+        context,
         status: "pending",
       })
-      .select("id, url, affiliate_url, status, created_at")
+      .select("id, url, affiliate_url, context, status, created_at")
       .single();
 
     if (error) {
@@ -63,7 +66,7 @@ export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
       .from("topic_queue")
-      .select("id, url, affiliate_url, status, created_at")
+      .select("id, url, affiliate_url, context, status, created_at")
       .order("created_at", { ascending: true })
       .limit(100);
 

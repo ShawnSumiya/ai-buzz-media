@@ -9,6 +9,7 @@ type TopicQueueItem = {
   id: string;
   url: string;
   affiliate_url: string | null;
+  context: string | null;
   status: string;
   created_at: string;
 };
@@ -68,6 +69,7 @@ export default function AdminPage() {
   const [creating, setCreating] = useState(false);
   const [url, setUrl] = useState("");
   const [affiliateUrl, setAffiliateUrl] = useState("");
+  const [context, setContext] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [scrapeFailedMessage, setScrapeFailedMessage] = useState<string | null>(null);
   const [fallbackText, setFallbackText] = useState("");
@@ -131,6 +133,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           url: url.trim(),
           affiliate_url: affiliateUrl.trim() || undefined,
+          context: context.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -139,6 +142,7 @@ export default function AdminPage() {
       // 成功時は入力だけクリアし、キュー一覧を再取得
       setUrl("");
       setAffiliateUrl("");
+      setContext("");
       setFallbackText("");
       setFallbackMode(false);
       setScrapeFailedMessage(null);
@@ -284,6 +288,18 @@ export default function AdminPage() {
               <p className="mt-1 text-xs text-slate-500">
                 未入力の場合は商品ページURLがボタンリンクに使われます。
               </p>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                スレッドのテーマ・指示（任意）
+              </label>
+              <textarea
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                placeholder="例：ReFa vs Dysonの比較。ReFaのコスパを褒める流れにして。"
+                rows={3}
+                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
             </div>
             {error && (
               <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">

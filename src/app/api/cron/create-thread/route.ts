@@ -138,7 +138,7 @@ export async function GET(req: Request) {
     // 1. topic_queue から pending の一番古いものを1件取得（affiliate_url も取得）
     const { data: queued, error: queueError } = await supabase
       .from("topic_queue")
-      .select("id, url, affiliate_url, status, created_at")
+      .select("id, url, affiliate_url, context, status, created_at")
       .eq("status", "pending")
       .order("created_at", { ascending: true })
       .limit(1);
@@ -159,13 +159,18 @@ export async function GET(req: Request) {
       });
     }
 
-    const topic = queued[0];
+    const topic = queued[0] as {
+      id: string;
+      url: string | null;
+      affiliate_url?: string | null;
+      context?: string | null;
+      status: string;
+      created_at: string;
+    };
     const rawUrl = topic.url?.trim();
     // 記事内ボタン用: アフィリエイトURLがあればそれ、なければ商品ページURL
     const buttonUrl =
-      (topic as { affiliate_url?: string | null }).affiliate_url?.trim() ||
-      rawUrl ||
-      null;
+      topic.affiliate_url?.trim() || rawUrl || null;
 
     if (!rawUrl) {
       // URL が空のレコードはスキップし、done 扱いにして次回以降に進める
@@ -250,7 +255,10 @@ export async function GET(req: Request) {
     };
 
     // 3: 無限サクラ会話の初期10件を生成
-    const productInfoForComments = buildProductInfoForComments(extracted, rawUrl);
+    let productInfoForComments = buildProductInfoForComments(extracted, rawUrl);
+    if (topic.context) {
+      productInfoForComments += `\n\n【重要：スレッド構成への追加指示】\nこのスレッドの会話の流れや結論について、以下の指示を最優先で守ってください：\n"${topic.context}"\n\n※指示に登場する競合製品名（DysonやPanasonicなど）については、あなたの持つ知識を使って具体的に比較・言及してください。`;
+    }
 
     const comments: TranscriptTurn[] = [];
     while (comments.length < 10) {
