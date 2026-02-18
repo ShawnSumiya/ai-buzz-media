@@ -1,6 +1,14 @@
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import type { TranscriptTurn } from "@/types/promo";
+
+// RLSを無視できる特権クライアント
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export const dynamic = "force-dynamic";
 
 function normalizeTranscript(raw: unknown): TranscriptTurn[] {
   if (!Array.isArray(raw)) return [];
@@ -36,7 +44,7 @@ function normalizeTranscript(raw: unknown): TranscriptTurn[] {
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("promo_threads")
       .select("id, product_name, source_url, affiliate_url, key_features, og_image_url, cast_profiles, transcript, created_at")
       .order("created_at", { ascending: false })
@@ -75,7 +83,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("promo_threads")
       .delete()
       .eq("id", id);
