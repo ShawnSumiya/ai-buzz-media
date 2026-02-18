@@ -156,14 +156,18 @@ export default function AdminPage() {
     if (!window.confirm("このキューを削除しますか？")) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/topic-queue?id=${encodeURIComponent(id)}`, {
+      const res = await fetch("/api/topic-queue", {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "削除に失敗しました");
       setQueueList((prev) => prev.filter((q) => q.id !== id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "削除に失敗しました");
+      const message = e instanceof Error ? e.message : "削除に失敗しました";
+      setError(message);
+      alert(message);
     } finally {
       setDeletingId(null);
     }

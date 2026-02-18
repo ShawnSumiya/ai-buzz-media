@@ -85,7 +85,8 @@ export async function GET() {
 // キューから指定IDのレコードを削除
 export async function DELETE(request: NextRequest) {
   try {
-    const id = request.nextUrl.searchParams.get("id");
+    const body = await request.json().catch(() => ({}));
+    const id = typeof body?.id === "string" ? body.id.trim() : "";
     if (!id) {
       return NextResponse.json(
         { error: "id を指定してください。" },
