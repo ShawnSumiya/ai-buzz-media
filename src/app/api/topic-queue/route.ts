@@ -7,6 +7,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const rawUrl = typeof body?.url === "string" ? body.url.trim() : "";
+    const affiliateUrl =
+      typeof body?.affiliate_url === "string" ? body.affiliate_url.trim() : null;
 
     if (!rawUrl) {
       return NextResponse.json(
@@ -19,9 +21,10 @@ export async function POST(request: NextRequest) {
       .from("topic_queue")
       .insert({
         url: rawUrl,
+        affiliate_url: affiliateUrl || null,
         status: "pending",
       })
-      .select("id, url, status, created_at")
+      .select("id, url, affiliate_url, status, created_at")
       .single();
 
     if (error) {
@@ -52,7 +55,7 @@ export async function GET() {
   try {
     const { data, error } = await supabase
       .from("topic_queue")
-      .select("id, url, status, created_at")
+      .select("id, url, affiliate_url, status, created_at")
       .order("created_at", { ascending: true })
       .limit(100);
 

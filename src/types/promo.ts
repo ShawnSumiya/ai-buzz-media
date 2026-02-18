@@ -26,6 +26,8 @@ export interface PromoThread {
   id: string;
   product_name: string;
   source_url: string | null;
+  /** 記事内ボタン用（アフィリエイトリンク等）。未設定時は source_url を使用 */
+  affiliate_url?: string | null;
   key_features: string;
   og_image_url?: string | null;
   cast_profiles: unknown[];

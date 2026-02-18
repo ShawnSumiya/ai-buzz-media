@@ -96,10 +96,10 @@ export async function GET(req: Request) {
   // --- セキュリティチェック終了 ---
 
   try {
-    // 1. topic_queue から pending の一番古いものを1件取得
+    // 1. topic_queue から pending の一番古いものを1件取得（affiliate_url も取得）
     const { data: queued, error: queueError } = await supabase
       .from("topic_queue")
-      .select("id, url, status, created_at")
+      .select("id, url, affiliate_url, status, created_at")
       .eq("status", "pending")
       .order("created_at", { ascending: true })
       .limit(1);
@@ -122,6 +122,11 @@ export async function GET(req: Request) {
 
     const topic = queued[0];
     const rawUrl = topic.url?.trim();
+    // 記事内ボタン用: アフィリエイトURLがあればそれ、なければ商品ページURL
+    const buttonUrl =
+      (topic as { affiliate_url?: string | null }).affiliate_url?.trim() ||
+      rawUrl ||
+      null;
 
     if (!rawUrl) {
       // URL が空のレコードはスキップし、done 扱いにして次回以降に進める
@@ -239,13 +244,14 @@ export async function GET(req: Request) {
       .insert({
         product_name: threadTitle,
         source_url: rawUrl,
+        affiliate_url: buttonUrl,
         key_features: keyFeaturesLines.join("\n"),
         og_image_url: ogImage || null,
         cast_profiles: [],
         transcript: initialTranscript,
       })
       .select(
-        "id, product_name, source_url, key_features, og_image_url, cast_profiles, transcript, created_at"
+        "id, product_name, source_url, affiliate_url, key_features, og_image_url, cast_profiles, transcript, created_at"
       )
       .single();
 

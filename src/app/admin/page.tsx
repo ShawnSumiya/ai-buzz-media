@@ -8,6 +8,7 @@ import type { PromoThread } from "@/types/promo";
 type TopicQueueItem = {
   id: string;
   url: string;
+  affiliate_url: string | null;
   status: string;
   created_at: string;
 };
@@ -66,6 +67,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [url, setUrl] = useState("");
+  const [affiliateUrl, setAffiliateUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [scrapeFailedMessage, setScrapeFailedMessage] = useState<string | null>(null);
   const [fallbackText, setFallbackText] = useState("");
@@ -128,6 +130,7 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: url.trim(),
+          affiliate_url: affiliateUrl.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -135,6 +138,7 @@ export default function AdminPage() {
 
       // 成功時は入力だけクリアし、キュー一覧を再取得
       setUrl("");
+      setAffiliateUrl("");
       setFallbackText("");
       setFallbackMode(false);
       setScrapeFailedMessage(null);
@@ -261,6 +265,21 @@ export default function AdminPage() {
                 placeholder="https://example.com/product"
                 className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
               />
+            </div>
+            <div>
+              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-700">
+                アフィリエイトURL（任意）
+              </label>
+              <input
+                type="url"
+                value={affiliateUrl}
+                onChange={(e) => setAffiliateUrl(e.target.value)}
+                placeholder="https://amazon.co.jp/... など記事内ボタン用"
+                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                未入力の場合は商品ページURLがボタンリンクに使われます。
+              </p>
             </div>
             {error && (
               <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">

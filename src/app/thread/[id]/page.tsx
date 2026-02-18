@@ -54,7 +54,7 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
   const { data: row, error } = await supabase
     .from("promo_threads")
     .select(
-      "id, product_name, source_url, key_features, og_image_url, transcript, created_at"
+      "id, product_name, source_url, affiliate_url, key_features, og_image_url, transcript, created_at"
     )
     .eq("id", threadId)
     .single();
@@ -118,14 +118,14 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
                 {new Date(thread.created_at).toLocaleString("ja-JP")}
               </time>
             )}
-            {thread.source_url && (
+            {(thread.affiliate_url ?? thread.source_url) && (
               <a
-                href={thread.source_url}
+                href={thread.affiliate_url ?? thread.source_url ?? ""}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
               >
-                商品ページを開く
+                商品を見る（Amazon/楽天）
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             )}

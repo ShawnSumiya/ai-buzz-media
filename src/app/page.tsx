@@ -72,12 +72,12 @@ function PromoCard({ thread }: { thread: PromoThread }) {
               ? new Date(thread.created_at).toLocaleString("ja-JP")
               : ""}
           </time>
-          {thread.source_url && (
+          {(thread.affiliate_url ?? thread.source_url) && (
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                window.open(thread.source_url ?? "", "_blank", "noopener,noreferrer");
+                window.open(thread.affiliate_url ?? thread.source_url ?? "", "_blank", "noopener,noreferrer");
               }}
               className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline"
             >
