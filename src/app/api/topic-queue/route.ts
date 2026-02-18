@@ -1,5 +1,11 @@
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+
+// RLSを無視できる特権クライアント
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +25,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("topic_queue")
       .insert({
         url: rawUrl,
@@ -55,7 +61,7 @@ export async function POST(request: NextRequest) {
 // （オプション）簡易的な一覧取得。今は pending のみ返す。
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("topic_queue")
       .select("id, url, affiliate_url, status, created_at")
       .order("created_at", { ascending: true })
@@ -96,7 +102,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("topic_queue")
       .delete()
       .eq("id", id);
