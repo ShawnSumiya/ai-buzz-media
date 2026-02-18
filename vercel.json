@@ -1,13 +1,5 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/create-thread",
-      "schedule": "0 0,5,9,15 * * *"
-    },
-    {
-      "path": "/api/cron/extend-thread",
-      "schedule": "*/20 * * * *"
-    }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/$1" }
   ]
 }
-

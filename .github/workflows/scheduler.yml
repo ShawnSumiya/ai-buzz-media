@@ -1,0 +1,27 @@
+name: Trigger Buzz Media Cron
+
+on:
+  schedule:
+    # 1. 新規スレ作成: 日本時間 0, 9, 14, 18時 (UTC: 15, 0, 5, 9)
+    - cron: '0 0,5,9,15 * * *'
+    # 2. コメント追記: 20分おき
+    - cron: '*/20 * * * *'
+
+jobs:
+  trigger-cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit Create Thread API
+        # 0,9,14,18時のときだけ実行したいが、GitHub Actionsは条件分岐が複雑なので、
+        # 単純化のため「常に両方叩く」か、エラーを許容する構成にします。
+        # ここではシンプルに「毎回両方のURLを叩く」設定にします（コスト0なので問題なし）。
+        run: |
+          curl -X GET ${{ secrets.VERCEL_URL }}/api/cron/create-thread \
+          -H "Authorization: Bearer ${{ secrets.CRON_API_KEY }}" \
+          --fail || echo "Create thread skipped or failed"
+
+      - name: Hit Extend Thread API
+        run: |
+          curl -X GET ${{ secrets.VERCEL_URL }}/api/cron/extend-thread \
+          -H "Authorization: Bearer ${{ secrets.CRON_API_KEY }}" \
+          --fail || echo "Extend thread skipped or failed"

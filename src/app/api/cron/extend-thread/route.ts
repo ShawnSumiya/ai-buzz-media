@@ -41,13 +41,12 @@ function normalizeTranscript(raw: unknown): TranscriptTurn[] {
 export async function GET(req: Request) {
   // --- セキュリティチェック開始 ---
   const authHeader = req.headers.get("authorization");
-  // Vercel Cron からのリクエストには `Bearer <CRON_SECRET>` が付く
-  // ※ ローカル開発環境(localhost)でテストする場合はこのチェックをスキップするか、
-  //    一時的にコメントアウトする必要があります。
-  if (process.env.NODE_ENV === "production") {
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  // ★ 自分で決めたキー (CRON_API_KEY) をチェック
+  if (authHeader !== `Bearer ${process.env.CRON_API_KEY}`) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
   }
   // --- セキュリティチェック終了 ---
 
