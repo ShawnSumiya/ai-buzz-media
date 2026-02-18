@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@next/third-parties": "^16.1.6",
     "@supabase/supabase-js": "^2.95.3",
     "cheerio": "^1.0.0-rc.12",
     "lucide-react": "^0.568.0",
