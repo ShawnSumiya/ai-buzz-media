@@ -1,6 +1,8 @@
 name: Trigger Buzz Media Cron
 
 on:
+  workflow_dispatch:
+  
   schedule:
     # 1. 新規スレ作成: 日本時間 0, 9, 14, 18時 (UTC: 15, 0, 5, 9)
     - cron: '0 0,5,9,15 * * *'
