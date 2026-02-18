@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+export const dynamic = "force-dynamic";
+
 // 管理画面から URL を「ネタ帳キュー」に積むためのAPI
 
 export async function POST(request: NextRequest) {
