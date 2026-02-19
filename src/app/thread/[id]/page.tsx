@@ -125,7 +125,7 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
               >
-                商品を見る（Amazon/楽天）
+                商品を見る
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             )}

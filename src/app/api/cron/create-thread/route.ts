@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { scrapePageText } from "@/lib/scraper";
-import { generateStreamComments, generateJSON } from "@/lib/gemini";
+import { generateStreamComments, generateJSON, generateContent } from "@/lib/gemini";
 import type { TranscriptTurn } from "@/types/promo";
 
 interface ExtractedProduct {
@@ -13,19 +13,65 @@ interface ExtractedProduct {
   key_specs: string;
 }
 
-/** スレッドタイトルは必ず商品名（またはメーカー+商品）を含める。曖昧な「話題の商品」禁止。 */
-function buildThreadTitle(p: ExtractedProduct): string {
-  const baseName = [p.manufacturer, p.product_name].filter(Boolean).join(" ") || "このページの目玉商品";
-  if (p.price) {
-    return `【悲報】${baseName}、${p.price}だけど性能がヤバいと話題にｗｗｗ`;
+/** スレッドタイトル生成用の厳格なNGルール（AIが絶対に守ること） */
+const THREAD_TITLE_SYSTEM_INSTRUCTION = `あなたは5ch風のスレッドタイトルを1つだけ生成するAIです。
+
+【🚨 タイトル生成に関する厳格なNGルール（絶対に守ること）】
+1. 禁止ワード: 「このページの注目商品」「あの商品」「新作」「話題のアイテム」のような、どの商品にも当てはまる抽象的な言葉をタイトルに入れることは【絶対禁止】です。
+2. 商品名の必須化: タイトルには、必ず「具体的な商品名」または「メーカー名＋短い特徴（例：Ankerの10000mAhのやつ）」を含めてください。読者がタイトルを見ただけで何の商品か分かる状態にしてください。
+3. パターンの多様化: 毎回同じようなトーンや文末（〜と話題にｗｗｗ）を使い回さないでください。商品のジャンルやコンテキスト（追加指示）に合わせて、【速報】【朗報】【悲報】【徹底議論】【相談】【疑問】など、スレタイトルのテイストを毎回ランダムに変化させてください。
+
+出力はスレッドタイトル1行のみ。余計な説明・引用符・改行は不要です。`;
+
+/** AIでスレッドタイトルを生成（NGルール厳守）。失敗時はフォールバックを返す。 */
+async function generateThreadTitle(
+  p: ExtractedProduct,
+  context?: string | null
+): Promise<string> {
+  const productInfo = [
+    `【商品名】${p.product_name}`,
+    p.manufacturer ? `【メーカー】${p.manufacturer}` : null,
+    p.model_number ? `【型番】${p.model_number}` : null,
+    p.price ? `【価格】${p.price}` : null,
+    p.key_specs ? `【スペック/特徴】${p.key_specs}` : null,
+    p.selling_point ? `【推しポイント】${p.selling_point}` : null,
+    context ? `【追加コンテキスト】${context}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const prompt = `以下の商品情報を元に、5ch風のスレッドタイトルを1つだけ生成してください。
+
+${productInfo}
+
+上記の情報を基に、【厳格なNGルール】を守って、具体的な商品名を含んだ多様なスレッドタイトルを生成してください。`;
+
+  try {
+    const title = await generateContent(prompt, THREAD_TITLE_SYSTEM_INSTRUCTION);
+    const trimmed = (title ?? "").trim().replace(/^["']|["']$/g, "");
+    if (trimmed.length >= 5 && trimmed.length <= 80) return trimmed;
+  } catch (e) {
+    console.warn("generateThreadTitle failed, using fallback:", e);
   }
-  return `【悲報】${baseName}、高すぎるけどアツすぎると話題にｗｗｗ`;
+  return buildThreadTitleFallback(p);
 }
 
-/** AIに渡す商品情報。会話内で具体的に言及するよう強調する。 */
+/** フォールバック用：AI生成失敗時に使用。商品名が分かる範囲で生成。 */
+function buildThreadTitleFallback(p: ExtractedProduct): string {
+  const baseName = [p.manufacturer, p.product_name].filter(Boolean).join(" ");
+  if (!baseName) return `【速報】気になる商品、レビューで盛り上がり中ｗ`;
+  const prefixes = ["【悲報】", "【朗報】", "【速報】", "【徹底議論】", "【相談】"];
+  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+  if (p.price) {
+    return `${prefix}${baseName}、${p.price}だけどヤバいと話題`;
+  }
+  return `${prefix}${baseName}、性能がヤバいと話題に`;
+}
+
+/** AIに渡す商品情報。>>1で商品を明示し、以降は自然な代名詞・省略形で参照すること。 */
 function buildProductInfoForComments(p: ExtractedProduct, url: string): string {
   const lines = [
-    "★以下の情報を会話内に必ず具体的に織り交ぜること★",
+    "★商品情報（>>1の投稿者が商品を紹介する際に使う。以降のレスでは「これ」「あれ」等の自然な表現に切り替えること）★",
     "",
     `【商品名】${p.product_name}`,
     p.manufacturer ? `【メーカー】${p.manufacturer}` : null,
@@ -39,7 +85,7 @@ function buildProductInfoForComments(p: ExtractedProduct, url: string): string {
   return lines.join("\n");
 }
 
-/** 会話生成用：具体的な商品名・スペックを出し、抽象語（これ・それ・あれ）を減らす */
+/** 会話生成用：商品名は>>1と一部のみ。それ以外は「これ」「あれ」等で自然な掲示板っぽく */
 const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitter)に書き込む本物の人間です。商品スレを見てリアルに反応する。
 
 【絶対守ること】
@@ -47,18 +93,21 @@ const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitt
 - 短文中心。1文が長くなりすぎるな
 - 適度に誤字、「w」「（笑）」「！」の連打を混ぜてリアリティを出す
 
-【★重要：具体的に話すこと★】
-- 「これ」「それ」「あれ」などの抽象的な指示語を極力使うな。必ず「商品名」「メーカー名」「型番」などを直接出すこと
-- スクレイピングした商品情報（価格、スペック、型番、特徴）を、レスの中に自然に織り交ぜること
-- 読者が会話だけ見ても「何の商品の話か」すぐ分かるようにせよ
+【★重要：商品名（フルネーム・型番）の使用は厳しく制限★】
+- 商品の正式名称や型番を使うのは、**>>1（スレッド最初の発言）と、全体のレスのうち1〜2割程度のみ**にすること
+- 全員が商品名・型番を復唱するのは禁止。業者のサクラっぽくなり不自然になる
+- スレッドタイトルと>>1で商品が何か分かるので、2回目以降のレスでは基本的に代名詞・省略形を使うこと
 
-【悪い例】
-「これすごいね！欲しいわ」「それマジでヤバい」「あれ買おうかな」
+【自然な代名詞・省略形を積極的に使うこと】
+- 2回目以降の発言では以下を使うこと：
+  「これ」「あれ」「それ」「新作」「〇〇（メーカー名）のやつ」「ドライヤー（一般名詞）」など
+- 良い例：「Ankerのこれ、3000円なら即ポチだろ」「それマジで言ってる？」「前のモデルより軽くなってるのいいな」
+- 悪い例：全レスで「Anker PowerCore 10000」「Dyson Supersonic HD08」を連呼する（不自然）
 
-【良い例】
-「Ankerの新型、ついに来たか！10000mAhでこの軽さは反則だろw」
-「Dysonの新作ドライヤー高いけど、風量ヤバすぎて吹き飛んだ」
-「M3チップでこの値段はバグだろ...」
+【スペック・価格の小出し】
+- 全員が価格やスペックを暗唱するのも禁止
+- ある人は価格に反応し、別の人は機能に反応する、というように情報を分散させる
+- 自然な会話のキャッチボールとして、1人1〜2点程度の反応にとどめること
 
 【ペルソナ多様性】
 全員ハイテンションだと嘘っぽい。以下を混ぜろ:
@@ -284,7 +333,7 @@ export async function GET(req: Request) {
       speaker_name: nameMap.get(t.speaker_name) ?? t.speaker_name,
     }));
 
-    const threadTitle = buildThreadTitle(extracted);
+    const threadTitle = await generateThreadTitle(extracted, topic.context);
 
     const keyFeaturesLines = [
       `【抽出された目玉情報】`,
