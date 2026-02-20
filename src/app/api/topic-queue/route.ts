@@ -15,6 +15,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const rawUrl = typeof body?.url === "string" ? body.url.trim() : "";
+    const title =
+      typeof body?.title === "string" ? body.title.trim() || null : null;
     const affiliateUrl =
       typeof body?.affiliate_url === "string" ? body.affiliate_url.trim() : null;
     const context =
@@ -26,16 +28,23 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (!title) {
+      return NextResponse.json(
+        { error: "title（商品名・管理用メモ）を指定してください。" },
+        { status: 400 }
+      );
+    }
 
     const { data, error } = await supabaseAdmin
       .from("topic_queue")
       .insert({
         url: rawUrl,
+        title: title || null,
         affiliate_url: affiliateUrl || null,
         context,
         status: "pending",
       })
-      .select("id, url, affiliate_url, context, status, created_at")
+      .select("id, url, title, affiliate_url, context, status, created_at")
       .single();
 
     if (error) {
@@ -66,7 +75,7 @@ export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
       .from("topic_queue")
-      .select("id, url, affiliate_url, context, status, created_at")
+      .select("id, url, title, affiliate_url, context, status, created_at")
       .order("created_at", { ascending: true })
       .limit(100);
 
@@ -116,7 +125,7 @@ export async function PATCH(request: NextRequest) {
       .from("topic_queue")
       .update({ status })
       .eq("id", id)
-      .select("id, url, affiliate_url, context, status, created_at")
+      .select("id, url, title, affiliate_url, context, status, created_at")
       .single();
 
     if (error) {

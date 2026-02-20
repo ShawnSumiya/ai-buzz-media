@@ -8,6 +8,7 @@ import type { PromoThread } from "@/types/promo";
 type TopicQueueItem = {
   id: string;
   url: string;
+  title: string | null;
   affiliate_url: string | null;
   context: string | null;
   status: string;
@@ -67,6 +68,7 @@ export default function AdminPage() {
   const [threads, setThreads] = useState<PromoThread[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [affiliateUrl, setAffiliateUrl] = useState("");
   const [context, setContext] = useState("");
@@ -120,6 +122,10 @@ export default function AdminPage() {
     setScrapeFailedMessage(null);
     setFallbackMode(false);
 
+    if (!title.trim()) {
+      setError("商品名 / 管理用メモを入力してください。");
+      return;
+    }
     if (!url.trim()) {
       setError("URL を入力してください。");
       return;
@@ -132,6 +138,7 @@ export default function AdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          title: title.trim(),
           url: url.trim(),
           affiliate_url: affiliateUrl.trim() || undefined,
           context: context.trim() || undefined,
@@ -141,6 +148,7 @@ export default function AdminPage() {
       if (!res.ok) throw new Error(data?.error ?? "キューへの追加に失敗しました");
 
       // 成功時は入力だけクリアし、キュー一覧を再取得
+      setTitle("");
       setUrl("");
       setAffiliateUrl("");
       setContext("");
@@ -285,6 +293,19 @@ export default function AdminPage() {
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                商品名 / 管理用メモ（必須）
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="例：ReFa ドライヤー 2024年モデル"
+                required
+                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
+            </div>
+            <div>
               <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-700">
                 <Link2 className="h-4 w-4" />
                 商品ページURL（必須）
@@ -410,7 +431,7 @@ export default function AdminPage() {
               <table className="w-full min-w-[480px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-500">
-                    <th className="pb-3 font-medium">URL</th>
+                    <th className="pb-3 font-medium">商品 / URL</th>
                     <th className="w-24 pb-3 font-medium">ステータス</th>
                     <th className="w-40 pb-3 font-medium">作成日時</th>
                     <th className="w-16 pb-3"></th>
@@ -422,13 +443,26 @@ export default function AdminPage() {
                       key={item.id}
                       className="border-b border-slate-100 last:border-0"
                     >
-                      <td className="max-w-[280px] py-3">
-                        <span
-                          className="block truncate text-slate-700"
-                          title={item.url}
-                        >
-                          {item.url}
-                        </span>
+                      <td className="max-w-[360px] py-3">
+                        <div className="space-y-1">
+                          <div className="font-semibold text-slate-900">
+                            {item.title || "名称未設定"}
+                          </div>
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block truncate text-xs text-gray-400 hover:text-slate-600 transition-colors"
+                            title={item.url}
+                          >
+                            {item.url}
+                          </a>
+                          {item.context && (
+                            <span className="inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                              {item.context}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3">
                         <span
