@@ -78,6 +78,7 @@ export default function AdminPage() {
   const [fallbackMode, setFallbackMode] = useState(false);
   const [queueList, setQueueList] = useState<TopicQueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
+  const [isFetchingTitle, setIsFetchingTitle] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
   const [requeueingId, setRequeueingId] = useState<string | null>(null);
@@ -162,6 +163,32 @@ export default function AdminPage() {
       );
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleFetchTitle() {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) {
+      setError("URL を入力してからタイトルを取得してください。");
+      return;
+    }
+    setError(null);
+    setIsFetchingTitle(true);
+    try {
+      const res = await fetch(
+        `/api/fetch-title?url=${encodeURIComponent(trimmedUrl)}`
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? "タイトルの取得に失敗しました");
+      }
+      if (typeof data?.title === "string") {
+        setTitle(data.title);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "タイトルの取得に失敗しました");
+    } finally {
+      setIsFetchingTitle(false);
     }
   }
 
@@ -310,13 +337,33 @@ export default function AdminPage() {
                 <Link2 className="h-4 w-4" />
                 商品ページURL（必須）
               </label>
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://example.com/product"
-                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://example.com/product"
+                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleFetchTitle}
+                  disabled={isFetchingTitle || !url.trim()}
+                  className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isFetchingTitle ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      取得中...
+                    </>
+                  ) : (
+                    <>
+                      🔄
+                      タイトル自動取得
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
             <div>
               <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-700">
