@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { GoogleTagManager } from "@next/third-parties/google";
+import { GoogleTagManager, GoogleAnalytics } from "@next/third-parties/google";
 import { Footer } from "@/components/Footer";
 import "./globals.css";
 
@@ -35,6 +35,9 @@ export default function RootLayout({
         <GoogleTagManager gtmId="GTM-M9T728HB" />
         <div className="flex-1">{children}</div>
         <Footer />
+        {process.env.NEXT_PUBLIC_GA_ID && (
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+        )}
       </body>
     </html>
   );
