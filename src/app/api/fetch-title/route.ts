@@ -107,33 +107,66 @@ export async function GET(request: NextRequest) {
       const shopCode = rakutenMatch[1];
       const itemCode = rakutenMatch[2];
       // 2. 正しい最新のエンドポイント（クエリパラメータに accessKey を含める）
-      const apiUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${process.env.RAKUTEN_APP_ID}&accessKey=${process.env.RAKUTEN_ACCESS_KEY}`;
+      let apiUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${process.env.RAKUTEN_APP_ID}&accessKey=${process.env.RAKUTEN_ACCESS_KEY}`;
 
       console.log(`【実行】楽天API（新仕様）へリクエスト: ${apiUrl}`);
 
+      const fetchOptions = {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          Referer: "https://ai-buzz-media.vercel.app/",
+          Origin: "https://ai-buzz-media.vercel.app",
+        },
+        signal: AbortSignal.timeout(10000),
+      };
+
       try {
         // 3. WAF突破のための Referer と Origin ヘッダーを両方付与する
-        const response = await fetch(apiUrl, {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            Referer: "https://ai-buzz-media.vercel.app/",
-            Origin: "https://ai-buzz-media.vercel.app",
-          },
-          signal: AbortSignal.timeout(10000),
-        });
+        let response = await fetch(apiUrl, fetchOptions);
+
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(
-            `【楽天API 致命的エラー】ステータス: ${response.status}, 詳細: ${errorText}`
-          );
-          return NextResponse.json(
-            {
-              title: "",
-              error: "楽天APIからエラーが返されました。手動で入力してください。",
-            },
-            { status: 200 }
-          );
+
+          // itemCodeが無効な場合、keyword検索にフォールバック
+          if (
+            response.status === 400 &&
+            errorText.includes("itemCode is not valid")
+          ) {
+            console.log(
+              `【フォールバック】itemCodeでの取得に失敗したため、shopCodeとkeywordで再検索します: shop=${shopCode}, keyword=${itemCode}`
+            );
+            apiUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&keyword=${encodeURIComponent(itemCode)}&shopCode=${shopCode}&applicationId=${process.env.RAKUTEN_APP_ID}&accessKey=${process.env.RAKUTEN_ACCESS_KEY}`;
+            response = await fetch(apiUrl, fetchOptions);
+
+            if (!response.ok) {
+              const fallbackError = await response.text();
+              console.error(
+                `【楽天API フォールバック失敗】ステータス: ${response.status}, 詳細: ${fallbackError}`
+              );
+              return NextResponse.json(
+                {
+                  title: "",
+                  error:
+                    "商品データが見つかりませんでした。手動で入力してください。",
+                },
+                { status: 200 }
+              );
+            }
+          } else {
+            // その他の致命的エラー
+            console.error(
+              `【楽天API 致命的エラー】ステータス: ${response.status}, 詳細: ${errorText}`
+            );
+            return NextResponse.json(
+              {
+                title: "",
+                error:
+                  "楽天APIからエラーが返されました。手動で入力してください。",
+              },
+              { status: 200 }
+            );
+          }
         }
 
         // 4. データ取得成功時
