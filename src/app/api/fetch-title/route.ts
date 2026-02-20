@@ -94,8 +94,10 @@ export async function GET(request: NextRequest) {
     } else {
       // 楽天の場合は公式APIを使用（スクレイピングなし）
       // 1. 環境変数のチェック
-      if (!process.env.RAKUTEN_APP_ID) {
-        console.error("【エラー】RAKUTEN_APP_ID が設定されていません。");
+      if (!process.env.RAKUTEN_APP_ID || !process.env.RAKUTEN_ACCESS_KEY) {
+        console.error(
+          "【エラー】楽天APIの認証情報（APP_IDまたはACCESS_KEY）が設定されていません。"
+        );
         return NextResponse.json(
           { title: "", error: "システム設定エラーのため取得できません。" },
           { status: 200 }
@@ -104,7 +106,7 @@ export async function GET(request: NextRequest) {
 
       const shopCode = rakutenMatch[1];
       const itemCode = rakutenMatch[2];
-      const apiUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${process.env.RAKUTEN_APP_ID}`;
+      const apiUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${process.env.RAKUTEN_APP_ID}`;
 
       // デバッグ用にリクエストURLをログ出力
       console.log(
@@ -113,10 +115,11 @@ export async function GET(request: NextRequest) {
 
       try {
         // 3. API実行とエラーハンドリング
-        // ヘッダーに Referer を付与して、許可されたWebサイトからのリクエストであることを証明する
+        // Authorizationヘッダーに accessKey を付与（新しいOpenAPI仕様）
         const response = await fetch(apiUrl, {
           headers: {
             Referer: "https://ai-buzz-media.vercel.app",
+            Authorization: `Bearer ${process.env.RAKUTEN_ACCESS_KEY}`,
           },
           signal: AbortSignal.timeout(10000),
         });
