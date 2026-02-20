@@ -75,10 +75,10 @@ export async function GET(request: NextRequest) {
     }
 
     // 楽天商品ページかどうかを判定（item.rakuten.co.jp/[shopCode]/[itemCode]）
-    const match = targetUrl.match(
+    const rakutenMatch = targetUrl.match(
       /item\.rakuten\.co\.jp\/([^/]+)\/([^/?#]+)/
     );
-    if (!match) {
+    if (!rakutenMatch) {
       // item.rakuten.co.jp を含むが形式が不正な場合もここに来る
       if (targetUrl.includes("item.rakuten.co.jp")) {
         console.error("楽天の商品コードが抽出できませんでした URL:", targetUrl);
@@ -89,8 +89,8 @@ export async function GET(request: NextRequest) {
       }
       // 楽天以外のURLの場合は後続のスクレイピングへ
     } else {
-      const shopCode = match[1];
-      const itemCode = match[2];
+      const shopCode = rakutenMatch[1];
+      const itemCode = rakutenMatch[2];
       // 抽出値の検証（空・不正文字でAPIを叩かない）
       if (!shopCode || !itemCode || shopCode.length < 1 || itemCode.length < 1) {
         console.error("楽天の商品コードが不正です shopCode:", shopCode, "itemCode:", itemCode, "URL:", targetUrl);
@@ -167,15 +167,15 @@ export async function GET(request: NextRequest) {
     }
 
     const html = await res.text();
-    const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    if (!match || !match[1]) {
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (!titleMatch || !titleMatch[1]) {
       return NextResponse.json(
         { error: "ページからタイトルを取得できませんでした。" },
         { status: 404 }
       );
     }
 
-    const rawTitle = match[1]
+    const rawTitle = titleMatch[1]
       .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
