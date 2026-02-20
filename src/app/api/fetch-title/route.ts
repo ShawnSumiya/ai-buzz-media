@@ -81,7 +81,10 @@ export async function GET(request: NextRequest) {
     if (!rakutenMatch) {
       // item.rakuten.co.jp を含むが形式が不正な場合もここに来る
       if (targetUrl.includes("item.rakuten.co.jp")) {
-        console.error("楽天の商品コードが抽出できませんでした URL:", targetUrl);
+        console.error(
+          "【エラー】楽天の商品コード抽出に失敗しました。 対象URL:",
+          targetUrl
+        );
         return NextResponse.json(
           { title: "", error: "商品コードが特定できませんでした。手動で入力してください。" },
           { status: 200 }
@@ -89,66 +92,88 @@ export async function GET(request: NextRequest) {
       }
       // 楽天以外のURLの場合は後続のスクレイピングへ
     } else {
-      const shopCode = rakutenMatch[1];
-      const itemCode = rakutenMatch[2];
-      // 抽出値の検証（空・不正文字でAPIを叩かない）
-      if (!shopCode || !itemCode || shopCode.length < 1 || itemCode.length < 1) {
-        console.error("楽天の商品コードが不正です shopCode:", shopCode, "itemCode:", itemCode, "URL:", targetUrl);
+      // 楽天の場合は公式APIを使用（スクレイピングなし）
+      // 1. 環境変数のチェック
+      if (!process.env.RAKUTEN_APP_ID) {
+        console.error("【エラー】RAKUTEN_APP_ID が設定されていません。");
         return NextResponse.json(
-          { title: "", error: "商品コードが特定できませんでした。手動で入力してください。" },
+          { title: "", error: "システム設定エラーのため取得できません。" },
           { status: 200 }
         );
       }
 
-    // 楽天の場合は公式APIを使用（スクレイピングなし）
-      const appId = process.env.RAKUTEN_APP_ID;
-      if (!appId) {
-        return NextResponse.json(
-          { error: "楽天APIの設定がありません。RAKUTEN_APP_ID を設定してください。" },
-          { status: 500 }
-        );
-      }
+      const shopCode = rakutenMatch[1];
+      const itemCode = rakutenMatch[2];
+      const apiUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${process.env.RAKUTEN_APP_ID}`;
+
+      // デバッグ用にリクエストURLをログ出力
+      console.log(
+        `【実行】楽天APIへリクエスト: shop=${shopCode}, item=${itemCode}`
+      );
+
       try {
-        const apiUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?format=json&itemCode=${encodeURIComponent(shopCode + ":" + itemCode)}&applicationId=${encodeURIComponent(appId)}`;
-        const apiRes = await fetch(apiUrl, {
+        // 3. API実行とエラーハンドリング
+        const response = await fetch(apiUrl, {
           signal: AbortSignal.timeout(10000),
         });
-        const data = (await apiRes.json()) as {
-          Items?: Array<{ Item?: { itemName?: string } }>;
-          error?: string;
-          error_description?: string;
-        };
-        if (!apiRes.ok) {
-          const errMsg =
-            data?.error_description ?? data?.error ?? `API エラー（HTTP ${apiRes.status}）`;
-          return NextResponse.json({ error: errMsg }, { status: apiRes.status });
-        }
-        const itemName =
-          data?.Items?.[0]?.Item?.itemName;
-        if (!itemName || typeof itemName !== "string") {
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(
+            `【楽天API 致命的エラー】ステータス: ${response.status}, 詳細: ${errorText}`
+          );
           return NextResponse.json(
-            { error: "楽天APIから商品名を取得できませんでした。" },
-            { status: 404 }
+            {
+              title: "",
+              error: "楽天APIからエラーが返されました。手動で入力してください。",
+            },
+            { status: 200 }
           );
         }
-        const title = cleanTitle(itemName);
+
+        // 4. データ取得成功時
+        const data = (await response.json()) as {
+          Items?: Array<{ Item?: { itemName?: string } }>;
+        };
+        if (!data.Items || data.Items.length === 0) {
+          console.error(
+            "【エラー】楽天APIは正常終了しましたが、該当商品が見つかりませんでした。"
+          );
+          return NextResponse.json(
+            { title: "", error: "商品データが見つかりませんでした。" },
+            { status: 200 }
+          );
+        }
+
+        const rawTitle = data.Items[0]?.Item?.itemName;
+        if (!rawTitle || typeof rawTitle !== "string") {
+          console.error("【エラー】楽天API: itemName が取得できませんでした。");
+          return NextResponse.json(
+            { title: "", error: "商品名の取得に失敗しました。" },
+            { status: 200 }
+          );
+        }
+
+        const title = cleanTitle(rawTitle);
         return NextResponse.json({ title });
       } catch (rakutenError) {
+        console.error("【楽天API 例外】", rakutenError);
         if (rakutenError instanceof Error) {
           if (rakutenError.name === "AbortError") {
             return NextResponse.json(
-              { error: "楽天APIの取得がタイムアウトしました。" },
-              { status: 408 }
+              {
+                title: "",
+                error: "楽天APIの取得がタイムアウトしました。",
+              },
+              { status: 200 }
             );
           }
-          return NextResponse.json(
-            { error: rakutenError.message || "楽天APIの取得に失敗しました。" },
-            { status: 500 }
-          );
         }
         return NextResponse.json(
-          { error: "楽天APIの取得に失敗しました。" },
-          { status: 500 }
+          {
+            title: "",
+            error: "楽天APIの取得に失敗しました。手動で入力してください。",
+          },
+          { status: 200 }
         );
       }
     }
