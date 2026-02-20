@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
 
       const shopCode = rakutenMatch[1];
       const itemCode = rakutenMatch[2];
-      const apiUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${process.env.RAKUTEN_APP_ID}`;
+      const apiUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${process.env.RAKUTEN_APP_ID}&accessKey=${process.env.RAKUTEN_ACCESS_KEY}`;
 
       // デバッグ用にリクエストURLをログ出力
       console.log(
@@ -115,11 +115,9 @@ export async function GET(request: NextRequest) {
 
       try {
         // 3. API実行とエラーハンドリング
-        // Authorizationヘッダーに accessKey を付与（新しいOpenAPI仕様）
         const response = await fetch(apiUrl, {
           headers: {
             Referer: "https://ai-buzz-media.vercel.app",
-            Authorization: `Bearer ${process.env.RAKUTEN_ACCESS_KEY}`,
           },
           signal: AbortSignal.timeout(10000),
         });
