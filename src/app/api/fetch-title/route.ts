@@ -42,15 +42,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const targetUrl = urlParam.trim();
+    const trimmedUrl = urlParam.trim();
     // 簡易URLバリデーション
     try {
-      new URL(targetUrl);
+      new URL(trimmedUrl);
     } catch {
       return NextResponse.json(
         { error: "有効なURLを指定してください。" },
         { status: 400 }
       );
+    }
+
+    // URLのパースと実際のターゲットURLの抽出
+    let targetUrl = trimmedUrl;
+    try {
+      const parsedUrl = new URL(trimmedUrl);
+      // 楽天アフィリエイトのリンクかどうかを判定
+      if (parsedUrl.hostname === "hb.afl.rakuten.co.jp") {
+        const pcUrl = parsedUrl.searchParams.get("pc");
+        if (pcUrl) {
+          targetUrl = decodeURIComponent(pcUrl); // デコードして本物のURLを取り出す
+        }
+      }
+    } catch (error) {
+      console.error("URLの解析に失敗しました:", error);
+      // パース失敗時は元のurlのまま進める
     }
 
     const res = await fetch(targetUrl, {
