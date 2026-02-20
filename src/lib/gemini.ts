@@ -358,3 +358,69 @@ Output valid JSON only.`;
     timestamp: new Date(now.getTime() + i * 1000).toISOString(),
   }));
 }
+
+const CONTINUATION_COMMENTS_SYSTEM = `あなたは5ちゃんねるやX(Twitter)に書き込む本物の人間です。
+すでに盛り上がっているスレッドの続き（数時間〜数日後）の会話を生成する。
+
+【文体】敬語禁止。タメ口・ネットスラング。短文中心。「ｗ」「（笑）」「マジか」などを適度に。
+【内容・後日談】以下を混ぜて自然に：
+- 購入した人のレビュー・感想（届いた、使ってみた、ヤバい等）
+- 迷っている人の背中を押すようなコメント（買ってよかった、損しない等）
+- 届いた報告、開封報告、ちょっとした口コミ
+【ペルソナ】購入済み、届いた人、購入検討中、様子見派などを多様に。全員ハイテンションはNG。
+【文脈継承】既存の会話を踏まえつつ、「あの後ポチった」「届いた」「↑の人の言う通り買ってよかった」など後日談として自然に。
+【禁止】ネガティブ発言。商品を褒める・期待する・買う宣言・買った報告に限る。
+
+5〜10件の範囲で必ず生成する。Output valid JSON only.`;
+
+/**
+ * 既存スレッドの「後日談」として5〜10件の続きコメントを生成
+ * 購入レビュー・届いた報告・迷っている人への背中押しなど、数時間〜数日後の自然なレス
+ */
+export async function generateContinuationComments(
+  context: string[],
+  productInfo: string
+): Promise<TranscriptTurn[]> {
+  const contextText =
+    context.length > 0
+      ? `【既存の会話ログ（最新〜古い順）】\n${context.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
+      : "（まだ会話はありません）";
+
+  const prompt = `以下の掲示板スレッド（5ch/X風）では、すでに盛り上がっている会話がある。
+これは**数時間〜数日後の続き**です。購入した人のレビューや、迷っている人の背中を押すような、後日談的な自然なレスを**5〜10件**生成せよ。
+
+${contextText}
+
+【商品・スレッド情報】
+${productInfo}
+
+購入した人の「届いた」「使ってみた」、迷っている人への「買って損しない」など、後日談としてリアルな会話を5〜10件生成する。
+speaker_attribute: 「30代主婦」「購入済み」「届いた人」など。speaker_name: ニックネーム。
+
+Output a single JSON object:
+- comments: array of 5 to 10 objects, each with: speaker_name (string), speaker_attribute (string), content (string)
+
+Output valid JSON only.`;
+
+  const text = await generateJSON(prompt, CONTINUATION_COMMENTS_SYSTEM);
+  const cleaned = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const parsed = JSON.parse(cleaned) as {
+    comments: { speaker_name: string; speaker_attribute: string; content: string }[];
+  };
+
+  const rawComments = (parsed.comments ?? []).slice(0, 10);
+  const now = new Date();
+
+  const randomNames = generateUniqueUserNames(rawComments.length || 1);
+
+  return rawComments.map((c, i) => ({
+    id: crypto.randomUUID(),
+    speaker_name: randomNames[i] ?? generateRandomUserName(),
+    speaker_attribute: c.speaker_attribute || "一般ユーザー",
+    content: c.content || "",
+    timestamp: new Date(now.getTime() + i * 1000).toISOString(),
+  }));
+}

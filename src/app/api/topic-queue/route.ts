@@ -93,6 +93,55 @@ export async function GET() {
   }
 }
 
+// ステータスを pending に戻して再実行可能にする
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const id = typeof body?.id === "string" ? body.id.trim() : "";
+    const status = typeof body?.status === "string" ? body.status.trim() : "";
+    if (!id) {
+      return NextResponse.json(
+        { error: "id を指定してください。" },
+        { status: 400 }
+      );
+    }
+    if (status !== "pending") {
+      return NextResponse.json(
+        { error: "status は 'pending' を指定してください。" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("topic_queue")
+      .update({ status })
+      .eq("id", id)
+      .select("id, url, affiliate_url, context, status, created_at")
+      .single();
+
+    if (error) {
+      console.error("topic-queue PATCH error:", error);
+      return NextResponse.json(
+        { error: "ステータスの更新に失敗しました。" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(data);
+  } catch (e) {
+    console.error("topic-queue PATCH error:", e);
+    return NextResponse.json(
+      {
+        error:
+          e instanceof Error
+            ? e.message
+            : "ステータス更新中にエラーが発生しました。",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 // キューから指定IDのレコードを削除
 export async function DELETE(request: NextRequest) {
   try {

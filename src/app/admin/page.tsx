@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Link2, FileText, Loader2, Settings2, ExternalLink, Trash2 } from "lucide-react";
+import { Sparkles, Link2, FileText, Loader2, Settings2, ExternalLink, Trash2, RotateCcw } from "lucide-react";
 import type { PromoThread } from "@/types/promo";
 
 type TopicQueueItem = {
@@ -78,6 +78,7 @@ export default function AdminPage() {
   const [queueLoading, setQueueLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
+  const [requeueingId, setRequeueingId] = useState<string | null>(null);
 
   const fetchThreads = useCallback(async () => {
     try {
@@ -153,6 +154,28 @@ export default function AdminPage() {
       );
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleRequeue(id: string) {
+    setRequeueingId(id);
+    try {
+      const res = await fetch("/api/topic-queue", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: "pending" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "再実行の登録に失敗しました");
+      setQueueList((prev) =>
+        prev.map((q) => (q.id === id ? { ...q, status: "pending" } : q))
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "再実行の登録に失敗しました";
+      setError(message);
+      alert(message);
+    } finally {
+      setRequeueingId(null);
     }
   }
 
@@ -420,19 +443,37 @@ export default function AdminPage() {
                           : "-"}
                       </td>
                       <td className="py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteQueue(item.id)}
-                          disabled={deletingId === item.id}
-                          className="inline-flex items-center justify-center rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                          title="削除"
-                        >
-                          {deletingId === item.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
+                        <div className="flex items-center gap-1">
+                          {item.status === "done" && (
+                            <button
+                              type="button"
+                              onClick={() => handleRequeue(item.id)}
+                              disabled={requeueingId === item.id}
+                              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                              title="再実行"
+                            >
+                              {requeueingId === item.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              )}
+                              再実行
+                            </button>
                           )}
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteQueue(item.id)}
+                            disabled={deletingId === item.id}
+                            className="inline-flex items-center justify-center rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            title="削除"
+                          >
+                            {deletingId === item.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

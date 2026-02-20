@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { scrapePageText } from "@/lib/scraper";
-import { generateStreamComments, generateJSON, generateContent } from "@/lib/gemini";
+import {
+  generateStreamComments,
+  generateJSON,
+  generateContent,
+  generateContinuationComments,
+} from "@/lib/gemini";
 import type { TranscriptTurn } from "@/types/promo";
 
 interface ExtractedProduct {
@@ -11,6 +16,40 @@ interface ExtractedProduct {
   price: string;
   selling_point: string;
   key_specs: string;
+}
+
+/** レガシー形式を新形式に変換（extend-thread / append-comments と同等） */
+function normalizeTranscript(raw: unknown): TranscriptTurn[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      const r = item as Record<string, unknown>;
+      if (
+        typeof r.id === "string" &&
+        typeof r.speaker_name === "string" &&
+        typeof r.content === "string"
+      ) {
+        return {
+          id: r.id,
+          speaker_name: r.speaker_name,
+          speaker_attribute: String(r.speaker_attribute ?? "一般ユーザー"),
+          content: r.content,
+          timestamp: String(r.timestamp ?? new Date().toISOString()),
+        } satisfies TranscriptTurn;
+      }
+      if (typeof r.content === "string") {
+        const speaker = typeof r.speaker === "string" ? r.speaker : "匿名";
+        return {
+          id: crypto.randomUUID(),
+          speaker_name: speaker,
+          speaker_attribute: "一般ユーザー",
+          content: r.content,
+          timestamp: String(r.timestamp ?? new Date().toISOString()),
+        } satisfies TranscriptTurn;
+      }
+      return null;
+    })
+    .filter((t): t is TranscriptTurn => t !== null);
 }
 
 /** スレッドタイトル生成用の厳格なNGルール（AIが絶対に守ること） */
@@ -201,10 +240,73 @@ export async function GET(req: Request) {
     }
 
     if (!queued || queued.length === 0) {
-      // キューが空なら何もしない
+      // フォールバック: 既存スレッドに続きのレス（スレ伸ばし）を追加
+      const { data: threads, error: threadsError } = await supabase
+        .from("promo_threads")
+        .select("id, product_name, key_features, transcript")
+        .limit(100);
+
+      if (threadsError) {
+        console.error("cron/create-thread fallback fetch error:", threadsError);
+        return NextResponse.json(
+          { error: "promo_threads の取得に失敗しました。" },
+          { status: 500 }
+        );
+      }
+
+      if (!threads || threads.length === 0) {
+        return NextResponse.json({
+          status: "no_thread",
+          message: "promo_threads にスレッドが存在しません。",
+        });
+      }
+
+      const thread = threads[
+        Math.floor(Math.random() * threads.length)
+      ] as { id: string; product_name: string; key_features: string | null; transcript: unknown };
+      const transcript = normalizeTranscript(thread.transcript ?? []);
+      const productInfo = `${thread.product_name}\n${thread.key_features ?? ""}`;
+
+      const recentTurns = transcript.slice(-15).reverse();
+      const context = recentTurns.map(
+        (t) => `${t.speaker_name}「${t.content}」`
+      );
+
+      const newComments = await generateContinuationComments(
+        context,
+        productInfo
+      );
+
+      if (newComments.length === 0) {
+        return NextResponse.json({
+          status: "no_new_comments",
+          thread_id: thread.id,
+          message: "生成された追いコメントが0件でした。",
+        });
+      }
+
+      const updatedTranscript = [...transcript, ...newComments];
+
+      const { error: updateError } = await supabase
+        .from("promo_threads")
+        .update({ transcript: updatedTranscript })
+        .eq("id", thread.id);
+
+      if (updateError) {
+        console.error(
+          "cron/create-thread fallback update error:",
+          updateError
+        );
+        return NextResponse.json(
+          { error: "transcript の更新に失敗しました。" },
+          { status: 500 }
+        );
+      }
+
       return NextResponse.json({
-        status: "no_topic",
-        message: "pending の topic_queue はありません。",
+        status: "extended",
+        thread_id: thread.id,
+        added_count: newComments.length,
       });
     }
 
