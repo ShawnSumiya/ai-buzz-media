@@ -74,6 +74,67 @@ export async function GET(request: NextRequest) {
       // パース失敗時は元のurlのまま進める
     }
 
+    // 楽天商品ページかどうかを判定（item.rakuten.co.jp/[shopCode]/[itemCode]）
+    const rakutenMatch = targetUrl.match(
+      /item\.rakuten\.co\.jp\/([^/]+)\/([^/?#]+)/
+    );
+
+    if (rakutenMatch) {
+      // 楽天の場合は公式APIを使用（スクレイピングなし）
+      const [, shopCode, itemCode] = rakutenMatch;
+      const appId = process.env.RAKUTEN_APP_ID;
+      if (!appId) {
+        return NextResponse.json(
+          { error: "楽天APIの設定がありません。RAKUTEN_APP_ID を設定してください。" },
+          { status: 500 }
+        );
+      }
+      try {
+        const apiUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?format=json&itemCode=${encodeURIComponent(shopCode + ":" + itemCode)}&applicationId=${encodeURIComponent(appId)}`;
+        const apiRes = await fetch(apiUrl, {
+          signal: AbortSignal.timeout(10000),
+        });
+        const data = (await apiRes.json()) as {
+          Items?: Array<{ Item?: { itemName?: string } }>;
+          error?: string;
+          error_description?: string;
+        };
+        if (!apiRes.ok) {
+          const errMsg =
+            data?.error_description ?? data?.error ?? `API エラー（HTTP ${apiRes.status}）`;
+          return NextResponse.json({ error: errMsg }, { status: apiRes.status });
+        }
+        const itemName =
+          data?.Items?.[0]?.Item?.itemName;
+        if (!itemName || typeof itemName !== "string") {
+          return NextResponse.json(
+            { error: "楽天APIから商品名を取得できませんでした。" },
+            { status: 404 }
+          );
+        }
+        const title = cleanTitle(itemName);
+        return NextResponse.json({ title });
+      } catch (rakutenError) {
+        if (rakutenError instanceof Error) {
+          if (rakutenError.name === "AbortError") {
+            return NextResponse.json(
+              { error: "楽天APIの取得がタイムアウトしました。" },
+              { status: 408 }
+            );
+          }
+          return NextResponse.json(
+            { error: rakutenError.message || "楽天APIの取得に失敗しました。" },
+            { status: 500 }
+          );
+        }
+        return NextResponse.json(
+          { error: "楽天APIの取得に失敗しました。" },
+          { status: 500 }
+        );
+      }
+    }
+
+    // 楽天以外: 通常のスクレイピング
     const res = await fetch(targetUrl, {
       headers: FETCH_HEADERS,
       signal: AbortSignal.timeout(10000), // 10秒でタイムアウト
