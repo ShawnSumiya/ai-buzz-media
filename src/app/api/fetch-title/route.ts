@@ -93,22 +93,17 @@ export async function GET(request: NextRequest) {
       // 楽天以外のURLの場合は後続のスクレイピングへ
     } else {
       // 楽天の場合は公式APIを使用（スクレイピングなし）
-      // 1. 環境変数のチェック（APP_IDのみ）
-      if (!process.env.RAKUTEN_APP_ID) {
-        console.error("【エラー】RAKUTEN_APP_ID が設定されていません。");
-        return NextResponse.json(
-          { title: "", error: "システム設定エラーのため取得できません。" },
-          { status: 200 }
-        );
-      }
+      // テスト用：アプリケーションID・アフィリエイトIDを直接指定
+      const TEST_APP_ID = "6e7e06e1-aefe-40e8-b18b-f592d62fbe79";
+      const TEST_AFFILIATE_ID = "512aebcd.f2f6e7a5.512aebce.8c0fe94f";
 
       const shopCode = rakutenMatch[1];
       const itemCode = rakutenMatch[2];
-      // 正しい開発者・アフィリエイト用エンドポイント
-      const apiUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${process.env.RAKUTEN_APP_ID}`;
+      // 正しい開発者・アフィリエイト用エンドポイント（affiliateIdも追加）
+      const apiUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${TEST_APP_ID}&affiliateId=${TEST_AFFILIATE_ID}`;
 
       // デバッグ用にリクエストURLをログ出力
-      console.log(`【実行】楽天APIへリクエスト: ${apiUrl}`);
+      console.log(`【実行テスト】楽天APIへリクエスト: ${apiUrl}`);
 
       try {
         // 3. API実行とエラーハンドリング
