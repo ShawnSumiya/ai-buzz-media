@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// 一般的なブラウザの User-Agent（楽天・Amazon で弾かれないようにする）
-const BROWSER_USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+// 一般的なブラウザヘッダー（楽天・Amazon で弾かれないようにする）
+const FETCH_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+} as const;
 
 function cleanTitle(raw: string): string {
   let title = raw.trim();
@@ -70,12 +75,7 @@ export async function GET(request: NextRequest) {
     }
 
     const res = await fetch(targetUrl, {
-      headers: {
-        "User-Agent": BROWSER_USER_AGENT,
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "ja,en;q=0.9",
-      },
+      headers: FETCH_HEADERS,
       signal: AbortSignal.timeout(10000), // 10秒でタイムアウト
     });
 
