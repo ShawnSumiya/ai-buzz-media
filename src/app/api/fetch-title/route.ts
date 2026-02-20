@@ -93,26 +93,32 @@ export async function GET(request: NextRequest) {
       // 楽天以外のURLの場合は後続のスクレイピングへ
     } else {
       // 楽天の場合は公式APIを使用（スクレイピングなし）
-      // テスト用：アプリケーションID・アフィリエイトIDを直接指定
-      const TEST_APP_ID = "6e7e06e1-aefe-40e8-b18b-f592d62fbe79";
-      const TEST_AFFILIATE_ID = "512aebcd.f2f6e7a5.512aebce.8c0fe94f";
+      // 1. APP_ID と ACCESS_KEY の両方を環境変数から取得
+      if (!process.env.RAKUTEN_APP_ID || !process.env.RAKUTEN_ACCESS_KEY) {
+        console.error(
+          "【エラー】楽天APIの認証情報（APP_IDまたはACCESS_KEY）が設定されていません。"
+        );
+        return NextResponse.json(
+          { title: "", error: "システム設定エラーのため取得できません。" },
+          { status: 200 }
+        );
+      }
 
       const shopCode = rakutenMatch[1];
       const itemCode = rakutenMatch[2];
-      // 正しい開発者・アフィリエイト用エンドポイント（affiliateIdも追加）
-      const apiUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${TEST_APP_ID}&affiliateId=${TEST_AFFILIATE_ID}`;
+      // 2. 正しい最新のエンドポイント（クエリパラメータに accessKey を含める）
+      const apiUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&itemCode=${shopCode}:${itemCode}&applicationId=${process.env.RAKUTEN_APP_ID}&accessKey=${process.env.RAKUTEN_ACCESS_KEY}`;
 
-      // デバッグ用にリクエストURLをログ出力
-      console.log(`【実行テスト】楽天APIへリクエスト: ${apiUrl}`);
+      console.log(`【実行】楽天API（新仕様）へリクエスト: ${apiUrl}`);
 
       try {
-        // 3. API実行とエラーハンドリング
-        // WAF突破のための Referer と User-Agent ヘッダーを両方付与
+        // 3. WAF突破のための Referer と Origin ヘッダーを両方付与する
         const response = await fetch(apiUrl, {
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             Referer: "https://ai-buzz-media.vercel.app/",
+            Origin: "https://ai-buzz-media.vercel.app",
           },
           signal: AbortSignal.timeout(10000),
         });
