@@ -75,13 +75,32 @@ export async function GET(request: NextRequest) {
     }
 
     // 楽天商品ページかどうかを判定（item.rakuten.co.jp/[shopCode]/[itemCode]）
-    const rakutenMatch = targetUrl.match(
+    const match = targetUrl.match(
       /item\.rakuten\.co\.jp\/([^/]+)\/([^/?#]+)/
     );
+    if (!match) {
+      // item.rakuten.co.jp を含むが形式が不正な場合もここに来る
+      if (targetUrl.includes("item.rakuten.co.jp")) {
+        console.error("楽天の商品コードが抽出できませんでした URL:", targetUrl);
+        return NextResponse.json(
+          { title: "", error: "商品コードが特定できませんでした。手動で入力してください。" },
+          { status: 200 }
+        );
+      }
+      // 楽天以外のURLの場合は後続のスクレイピングへ
+    } else {
+      const shopCode = match[1];
+      const itemCode = match[2];
+      // 抽出値の検証（空・不正文字でAPIを叩かない）
+      if (!shopCode || !itemCode || shopCode.length < 1 || itemCode.length < 1) {
+        console.error("楽天の商品コードが不正です shopCode:", shopCode, "itemCode:", itemCode, "URL:", targetUrl);
+        return NextResponse.json(
+          { title: "", error: "商品コードが特定できませんでした。手動で入力してください。" },
+          { status: 200 }
+        );
+      }
 
-    if (rakutenMatch) {
-      // 楽天の場合は公式APIを使用（スクレイピングなし）
-      const [, shopCode, itemCode] = rakutenMatch;
+    // 楽天の場合は公式APIを使用（スクレイピングなし）
       const appId = process.env.RAKUTEN_APP_ID;
       if (!appId) {
         return NextResponse.json(
