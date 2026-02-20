@@ -113,7 +113,11 @@ export async function GET(request: NextRequest) {
 
       try {
         // 3. API実行とエラーハンドリング
+        // ヘッダーに Referer を付与して、許可されたWebサイトからのリクエストであることを証明する
         const response = await fetch(apiUrl, {
+          headers: {
+            Referer: "https://ai-buzz-media.vercel.app",
+          },
           signal: AbortSignal.timeout(10000),
         });
         if (!response.ok) {
