@@ -2,6 +2,9 @@ import { ImageResponse } from "@vercel/og";
 
 const DEFAULT_TITLE = "AI Buzz Media";
 
+type FontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+type FontStyle = "normal" | "italic";
+
 /**
  * フォント読み込み（Vercel本番でのタイムアウト・フェッチ制限を考慮）。
  * 失敗時は null を返し、画像生成はデフォルトフォントで継続する。
@@ -10,7 +13,7 @@ const FONTSOURCE_BASE =
   "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5.2.9/files";
 
 async function loadFonts(): Promise<
-  Array<{ name: string; data: ArrayBuffer; weight: number; style: string }> | null
+  Array<{ name: string; data: ArrayBuffer; weight: FontWeight; style: FontStyle }> | null
 > {
   try {
     const text = "テスト AI Buzz Media が盛り上がる掲示板";
@@ -32,7 +35,14 @@ async function loadFonts(): Promise<
       const fontRes = await fetch(fontUrl);
       if (fontRes.ok) {
         const data = await fontRes.arrayBuffer();
-        return [{ name: "Noto Sans JP", data, weight: 700, style: "normal" }];
+        return [
+          {
+            name: "Noto Sans JP",
+            data,
+            weight: 700 as FontWeight,
+            style: "normal" as FontStyle,
+          },
+        ];
       }
     }
   } catch {
@@ -46,23 +56,23 @@ async function loadFonts(): Promise<
     const fonts: Array<{
       name: string;
       data: ArrayBuffer;
-      weight: number;
-      style: string;
+      weight: FontWeight;
+      style: FontStyle;
     }> = [];
     if (latinRes.ok) {
       fonts.push({
         name: "Noto Sans JP",
         data: await latinRes.arrayBuffer(),
-        weight: 700,
-        style: "normal",
+        weight: 700 as FontWeight,
+        style: "normal" as FontStyle,
       });
     }
     if (jpRes.ok) {
       fonts.push({
         name: "Noto Sans JP",
         data: await jpRes.arrayBuffer(),
-        weight: 700,
-        style: "normal",
+        weight: 700 as FontWeight,
+        style: "normal" as FontStyle,
       });
     }
     return fonts.length > 0 ? fonts : null;
