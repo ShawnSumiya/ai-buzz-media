@@ -82,6 +82,7 @@ export default function AdminPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
   const [requeueingId, setRequeueingId] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const fetchThreads = useCallback(async () => {
     try {
@@ -195,23 +196,24 @@ export default function AdminPage() {
   async function handleRetry(id: string) {
     setRequeueingId(id);
     setError(null);
+    setSuccessMessage(null);
     try {
-      const res = await fetch("/api/topic-queue/retry", {
-        method: "POST",
+      const res = await fetch("/api/topic-queue", {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, status: "pending" }),
       });
       const data = await res.json();
       if (!res.ok) {
-        const message = data?.error ?? data?.detail ?? "再実行に失敗しました";
+        const message = data?.error ?? data?.detail ?? "ステータスの更新に失敗しました";
         throw new Error(message);
       }
+      setSuccessMessage("ステータスをPendingに戻しました。次回の自動処理で実行されます。");
+      setTimeout(() => setSuccessMessage(null), 5000);
       fetchQueue();
-      fetchThreads();
     } catch (e) {
-      const message = e instanceof Error ? e.message : "再実行に失敗しました";
+      const message = e instanceof Error ? e.message : "ステータスの更新に失敗しました";
       setError(message);
-      alert(message);
     } finally {
       setRequeueingId(null);
     }
@@ -462,6 +464,11 @@ export default function AdminPage() {
         </section>
 
         <section className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          {successMessage && (
+            <div className="mb-4 rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+              {successMessage}
+            </div>
+          )}
           <h2 className="mb-4 flex items-center gap-2 text-sm font-medium uppercase tracking-wide text-slate-500">
             Queue Status
             <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700">
@@ -538,7 +545,7 @@ export default function AdminPage() {
                             {requeueingId === item.id ? (
                               <>
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                生成中...
+                                更新中...
                               </>
                             ) : (
                               <>
