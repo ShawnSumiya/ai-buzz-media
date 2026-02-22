@@ -3,6 +3,7 @@ import { MessageCircle, MessageSquareQuote, ExternalLink } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { PromoThread, TranscriptTurn } from "@/types/promo";
 import { ThreadChat } from "@/components/ThreadChat";
+import type { Metadata } from "next";
 
 function normalizeTranscript(raw: unknown): TranscriptTurn[] {
   if (!Array.isArray(raw)) return [];
@@ -36,8 +37,63 @@ function normalizeTranscript(raw: unknown): TranscriptTurn[] {
     .filter((t): t is TranscriptTurn => t !== null);
 }
 
+function getFirstCommentExcerpt(transcript: TranscriptTurn[], maxLength = 120): string {
+  const first = transcript.find((t) => t.content?.trim());
+  if (!first?.content) return "AIが盛り上がる掲示板 - 最新ガジェット・トレンドのまとめ";
+  const text = first.content.replace(/\s+/g, " ").trim();
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}…`;
+}
+
 interface ThreadPageProps {
   params: Promise<{ id: string }>;
+}
+
+const siteUrl = "https://ai-buzz-media.vercel.app";
+
+export async function generateMetadata({
+  params,
+}: ThreadPageProps): Promise<Metadata> {
+  const { id: threadId } = await params;
+  if (!threadId) {
+    return { title: "スレッドが見つかりません | AI Buzz Media" };
+  }
+
+  const { data: row, error } = await supabase
+    .from("promo_threads")
+    .select("id, product_name, og_image_url, transcript")
+    .eq("id", threadId)
+    .single();
+
+  if (error || !row) {
+    return { title: "スレッドが見つかりません | AI Buzz Media" };
+  }
+
+  const transcript = normalizeTranscript((row as { transcript?: unknown }).transcript ?? []);
+  const title = String((row as { product_name?: string }).product_name ?? "スレッド");
+  const description = getFirstCommentExcerpt(transcript);
+  const encodedTitle = encodeURIComponent(title);
+  const ogImageUrl = `/api/og?title=${encodedTitle}`;
+  const url = `${siteUrl}/thread/${threadId}`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: "AI Buzz Media",
+      type: "website",
+      locale: "ja_JP",
+      images: [{ url: ogImageUrl, alt: title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImageUrl],
+    },
+  };
 }
 
 export default async function ThreadPage({ params }: ThreadPageProps) {

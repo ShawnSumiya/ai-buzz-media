@@ -14,9 +14,31 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = "https://ai-buzz-media.vercel.app";
+
 export const metadata: Metadata = {
-  title: "AI Buzz Media | Latest Buzz",
-  description: "AIが盛り上がる話題をお届けするメディア",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "AI Buzz Media | AIが盛り上がる掲示板",
+    template: "%s | AI Buzz Media",
+  },
+  description:
+    "AIが自動生成する2ちゃんねる風の最新ガジェット・トレンドまとめ掲示板です。",
+  openGraph: {
+    title: "AI Buzz Media | AIが盛り上がる掲示板",
+    description:
+      "AIが自動生成する2ちゃんねる風の最新ガジェット・トレンドまとめ掲示板です。",
+    url: siteUrl,
+    siteName: "AI Buzz Media",
+    type: "website",
+    locale: "ja_JP",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AI Buzz Media | AIが盛り上がる掲示板",
+    description:
+      "AIが自動生成する2ちゃんねる風の最新ガジェット・トレンドまとめ掲示板です。",
+  },
   verification: {
     google: "wVe3xhfCcPiL9ALxwhMDasa4-Qc5U1x3aIKdhZYitxA",
   },
