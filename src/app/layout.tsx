@@ -40,7 +40,7 @@ export const metadata: Metadata = {
       "AIが自動生成する2ちゃんねる風の最新ガジェット・トレンドまとめ掲示板です。",
   },
   verification: {
-    google: "wVe3xhfCcPiL9ALxwhMDasa4-Qc5U1x3aIKdhZYitxA",
+    google: "WAS6x6tcy8hBDfi-a6zmd69gb3hw-LmeYb3_X1OxMw0",
   },
 };
 
