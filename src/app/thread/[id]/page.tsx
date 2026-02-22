@@ -178,6 +178,7 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
                 })}
               </time>
             )}
+            <span className="text-[10px] text-gray-400">[PR]</span>
             {(thread.affiliate_url ?? thread.source_url) && (
               <span className="affiliate-btn-shine rounded-full">
                 <a
