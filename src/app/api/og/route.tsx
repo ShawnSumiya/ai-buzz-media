@@ -1,20 +1,16 @@
 import { ImageResponse } from "@vercel/og";
 
-export const runtime = "edge";
-
 const DEFAULT_TITLE = "AI Buzz Media";
 
 /**
- * SatoriはWOFF2をサポートしていないため、TTF/OTF/WOFF形式が必要。
- * 1. 古いSafariのUser-AgentでGoogle Fonts APIを叩くとTTFが返る
- * 2. フォールバック: FontsourceのWOFF（SatoriはWOFF対応）
- * 日本語＋ラテンの両方のサブセットを読み込む。
+ * フォント読み込み（Vercel本番でのタイムアウト・フェッチ制限を考慮）。
+ * 失敗時は null を返し、画像生成はデフォルトフォントで継続する。
  */
 const FONTSOURCE_BASE =
   "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5.2.9/files";
 
 async function loadFonts(): Promise<
-  Array<{ name: string; data: ArrayBuffer; weight: number; style: string }>
+  Array<{ name: string; data: ArrayBuffer; weight: number; style: string }> | null
 > {
   try {
     const text = "テスト AI Buzz Media が盛り上がる掲示板";
@@ -26,7 +22,7 @@ async function loadFonts(): Promise<
           "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_8; de-at) AppleWebKit/533.21.1 (KHTML, like Gecko) Version/5.0.5 Safari/533.21.1",
       },
     });
-    if (!res.ok) throw new Error(`Font CSS: ${res.status}`);
+    if (!res.ok) return null;
     const css = await res.text();
     const match = css.match(
       /src:\s*url\(([^)]+)\)\s*format\(['"](?:opentype|truetype)['"]\)/
@@ -40,39 +36,39 @@ async function loadFonts(): Promise<
       }
     }
   } catch {
-    /* fall through to WOFF fallback */
+    /* fall through to Fontsource fallback */
   }
-  const [latinRes, jpRes] = await Promise.all([
-    fetch(`${FONTSOURCE_BASE}/noto-sans-jp-0-700-normal.woff`),
-    fetch(`${FONTSOURCE_BASE}/noto-sans-jp-1-700-normal.woff`),
-  ]);
-  if (!latinRes.ok && !jpRes.ok) {
-    throw new Error("Failed to load fonts from Fontsource");
+  try {
+    const [latinRes, jpRes] = await Promise.all([
+      fetch(`${FONTSOURCE_BASE}/noto-sans-jp-0-700-normal.woff`),
+      fetch(`${FONTSOURCE_BASE}/noto-sans-jp-1-700-normal.woff`),
+    ]);
+    const fonts: Array<{
+      name: string;
+      data: ArrayBuffer;
+      weight: number;
+      style: string;
+    }> = [];
+    if (latinRes.ok) {
+      fonts.push({
+        name: "Noto Sans JP",
+        data: await latinRes.arrayBuffer(),
+        weight: 700,
+        style: "normal",
+      });
+    }
+    if (jpRes.ok) {
+      fonts.push({
+        name: "Noto Sans JP",
+        data: await jpRes.arrayBuffer(),
+        weight: 700,
+        style: "normal",
+      });
+    }
+    return fonts.length > 0 ? fonts : null;
+  } catch {
+    return null;
   }
-  const fonts: Array<{
-    name: string;
-    data: ArrayBuffer;
-    weight: number;
-    style: string;
-  }> = [];
-  if (latinRes.ok) {
-    fonts.push({
-      name: "Noto Sans JP",
-      data: await latinRes.arrayBuffer(),
-      weight: 700,
-      style: "normal",
-    });
-  }
-  if (jpRes.ok) {
-    fonts.push({
-      name: "Noto Sans JP",
-      data: await jpRes.arrayBuffer(),
-      weight: 700,
-      style: "normal",
-    });
-  }
-  if (fonts.length === 0) throw new Error("No fonts loaded");
-  return fonts;
 }
 
 export async function GET(request: Request) {
@@ -100,7 +96,7 @@ export async function GET(request: Request) {
             backgroundColor: "#0f172a",
             backgroundImage:
               "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)",
-            fontFamily: "Noto Sans JP, sans-serif",
+            fontFamily: fonts ? "Noto Sans JP, sans-serif" : "sans-serif",
             padding: 60,
           }}
         >
@@ -193,7 +189,7 @@ export async function GET(request: Request) {
       {
         width: 1200,
         height: 630,
-        fonts,
+        ...(fonts && fonts.length > 0 ? { fonts } : {}),
       }
     );
   } catch (e) {
