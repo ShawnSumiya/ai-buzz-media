@@ -192,21 +192,24 @@ export default function AdminPage() {
     }
   }
 
-  async function handleRequeue(id: string) {
+  async function handleRetry(id: string) {
     setRequeueingId(id);
+    setError(null);
     try {
-      const res = await fetch("/api/topic-queue", {
-        method: "PATCH",
+      const res = await fetch("/api/topic-queue/retry", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status: "pending" }),
+        body: JSON.stringify({ id }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "再実行の登録に失敗しました");
-      setQueueList((prev) =>
-        prev.map((q) => (q.id === id ? { ...q, status: "pending" } : q))
-      );
+      if (!res.ok) {
+        const message = data?.error ?? data?.detail ?? "再実行に失敗しました";
+        throw new Error(message);
+      }
+      fetchQueue();
+      fetchThreads();
     } catch (e) {
-      const message = e instanceof Error ? e.message : "再実行の登録に失敗しました";
+      const message = e instanceof Error ? e.message : "再実行に失敗しました";
       setError(message);
       alert(message);
     } finally {
@@ -525,22 +528,25 @@ export default function AdminPage() {
                       </td>
                       <td className="py-3">
                         <div className="flex items-center gap-1">
-                          {item.status === "done" && (
-                            <button
-                              type="button"
-                              onClick={() => handleRequeue(item.id)}
-                              disabled={requeueingId === item.id}
-                              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
-                              title="再実行"
-                            >
-                              {requeueingId === item.id ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRetry(item.id)}
+                            disabled={requeueingId === item.id}
+                            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                            title="再実行"
+                          >
+                            {requeueingId === item.id ? (
+                              <>
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
+                                生成中...
+                              </>
+                            ) : (
+                              <>
                                 <RotateCcw className="h-3.5 w-3.5" />
-                              )}
-                              再実行
-                            </button>
-                          )}
+                                再実行
+                              </>
+                            )}
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteQueue(item.id)}

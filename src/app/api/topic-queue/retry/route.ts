@@ -1,15 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-
-export const maxDuration = 60; // 記事生成のAI処理が長いため延長（Vercel Proなら300などに変更可）
 import { scrapePageText } from "@/lib/scraper";
 import {
   generateStreamComments,
   generateJSON,
   generateContent,
-  generateContinuationComments,
 } from "@/lib/gemini";
 import type { TranscriptTurn } from "@/types/promo";
+
+export const maxDuration = 60; // 記事生成のAI処理が長いため延長（Vercel Proなら300などに変更可）
 
 interface ExtractedProduct {
   product_name: string;
@@ -20,51 +19,26 @@ interface ExtractedProduct {
   key_specs: string;
 }
 
-/** レガシー形式を新形式に変換（extend-thread / append-comments と同等） */
-function normalizeTranscript(raw: unknown): TranscriptTurn[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => {
-      const r = item as Record<string, unknown>;
-      if (
-        typeof r.id === "string" &&
-        typeof r.speaker_name === "string" &&
-        typeof r.content === "string"
-      ) {
-        return {
-          id: r.id,
-          speaker_name: r.speaker_name,
-          speaker_attribute: String(r.speaker_attribute ?? "一般ユーザー"),
-          content: r.content,
-          timestamp: String(r.timestamp ?? new Date().toISOString()),
-        } satisfies TranscriptTurn;
-      }
-      if (typeof r.content === "string") {
-        const speaker = typeof r.speaker === "string" ? r.speaker : "匿名";
-        return {
-          id: crypto.randomUUID(),
-          speaker_name: speaker,
-          speaker_attribute: "一般ユーザー",
-          content: r.content,
-          timestamp: String(r.timestamp ?? new Date().toISOString()),
-        } satisfies TranscriptTurn;
-      }
-      return null;
-    })
-    .filter((t): t is TranscriptTurn => t !== null);
+function buildThreadTitleFallback(p: ExtractedProduct): string {
+  const baseName = [p.manufacturer, p.product_name].filter(Boolean).join(" ");
+  if (!baseName) return `【速報】気になる商品、レビューで盛り上がり中ｗ`;
+  const prefixes = ["【悲報】", "【朗報】", "【速報】", "【徹底議論】", "【相談】"];
+  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+  if (p.price) {
+    return `${prefix}${baseName}、${p.price}だけどヤバいと話題`;
+  }
+  return `${prefix}${baseName}、性能がヤバいと話題に`;
 }
 
-/** スレッドタイトル生成用の厳格なNGルール（AIが絶対に守ること） */
 const THREAD_TITLE_SYSTEM_INSTRUCTION = `あなたは5ch風のスレッドタイトルを1つだけ生成するAIです。
 
 【🚨 タイトル生成に関する厳格なNGルール（絶対に守ること）】
 1. 禁止ワード: 「このページの注目商品」「あの商品」「新作」「話題のアイテム」のような、どの商品にも当てはまる抽象的な言葉をタイトルに入れることは【絶対禁止】です。
 2. 商品名の必須化: タイトルには、必ず「具体的な商品名」または「メーカー名＋短い特徴（例：Ankerの10000mAhのやつ）」を含めてください。読者がタイトルを見ただけで何の商品か分かる状態にしてください。
-3. パターンの多様化: 毎回同じようなトーンや文末（〜と話題にｗｗｗ）を使い回さないでください。商品のジャンルやコンテキスト（追加指示）に合わせて、【速報】【朗報】【悲報】【徹底議論】【相談】【疑問】など、スレタイトルのテイストを毎回ランダムに変化させてください。
+3. パターンの多様化: 毎回同じようなトーンや文末（〜と話題にｗｗｗ）を使い回さないでください。
 
 出力はスレッドタイトル1行のみ。余計な説明・引用符・改行は不要です。`;
 
-/** AIでスレッドタイトルを生成（NGルール厳守）。失敗時はフォールバックを返す。 */
 async function generateThreadTitle(
   p: ExtractedProduct,
   context?: string | null
@@ -92,24 +66,11 @@ ${productInfo}
     const trimmed = (title ?? "").trim().replace(/^["']|["']$/g, "");
     if (trimmed.length >= 5 && trimmed.length <= 80) return trimmed;
   } catch (e) {
-    console.warn("generateThreadTitle failed, using fallback:", e);
+    console.warn("retry generateThreadTitle failed, using fallback:", e);
   }
   return buildThreadTitleFallback(p);
 }
 
-/** フォールバック用：AI生成失敗時に使用。商品名が分かる範囲で生成。 */
-function buildThreadTitleFallback(p: ExtractedProduct): string {
-  const baseName = [p.manufacturer, p.product_name].filter(Boolean).join(" ");
-  if (!baseName) return `【速報】気になる商品、レビューで盛り上がり中ｗ`;
-  const prefixes = ["【悲報】", "【朗報】", "【速報】", "【徹底議論】", "【相談】"];
-  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-  if (p.price) {
-    return `${prefix}${baseName}、${p.price}だけどヤバいと話題`;
-  }
-  return `${prefix}${baseName}、性能がヤバいと話題に`;
-}
-
-/** AIに渡す商品情報。>>1で商品を明示し、以降は自然な代名詞・省略形で参照すること。 */
 function buildProductInfoForComments(p: ExtractedProduct, url: string): string {
   const lines = [
     "★商品情報（>>1の投稿者が商品を紹介する際に使う。以降のレスでは「これ」「あれ」等の自然な表現に切り替えること）★",
@@ -126,7 +87,6 @@ function buildProductInfoForComments(p: ExtractedProduct, url: string): string {
   return lines.join("\n");
 }
 
-/** 会話生成用：商品名は>>1と一部のみ。それ以外は「これ」「あれ」等で自然な掲示板っぽく */
 const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitter)に書き込む本物の人間です。商品スレを見てリアルに反応する。
 
 【絶対守ること】
@@ -137,24 +97,6 @@ const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitt
 【★重要：商品名（フルネーム・型番）の使用は厳しく制限★】
 - 商品の正式名称や型番を使うのは、**>>1（スレッド最初の発言）と、全体のレスのうち1〜2割程度のみ**にすること
 - 全員が商品名・型番を復唱するのは禁止。業者のサクラっぽくなり不自然になる
-- スレッドタイトルと>>1で商品が何か分かるので、2回目以降のレスでは基本的に代名詞・省略形を使うこと
-
-【自然な代名詞・省略形を積極的に使うこと】
-- 2回目以降の発言では以下を使うこと：
-  「これ」「あれ」「それ」「新作」「〇〇（メーカー名）のやつ」「ドライヤー（一般名詞）」など
-- 良い例：「Ankerのこれ、3000円なら即ポチだろ」「それマジで言ってる？」「前のモデルより軽くなってるのいいな」
-- 悪い例：全レスで「Anker PowerCore 10000」「Dyson Supersonic HD08」を連呼する（不自然）
-
-【スペック・価格の小出し】
-- 全員が価格やスペックを暗唱するのも禁止
-- ある人は価格に反応し、別の人は機能に反応する、というように情報を分散させる
-- 自然な会話のキャッチボールとして、1人1〜2点程度の反応にとどめること
-
-【ペルソナ多様性】
-全員ハイテンションだと嘘っぽい。以下を混ぜろ:
-- 冷静に評価するオタク
-- 金欠だけど欲しい学生
-- 様子見してる慎重派（でも最後は欲しくなる）
 
 Output valid JSON only, no markdown code fences or extra text.`;
 
@@ -212,107 +154,36 @@ function generateUniqueUserNames(count: number): string[] {
   return Array.from(set);
 }
 
-export async function GET(req: Request) {
-  // --- セキュリティチェック開始 ---
-  const authHeader = req.headers.get("authorization");
-  // ★ 自分で決めたキー (CRON_API_KEY) をチェック
-  if (authHeader !== `Bearer ${process.env.CRON_API_KEY}`) {
-    return NextResponse.json(
-      { error: "Unauthorized" },
-      { status: 401 }
-    );
-  }
-  // --- セキュリティチェック終了 ---
-
+/**
+ * 特定の topic_queue アイテムを手動で再実行（記事生成）するAPI
+ * pending や error でスタックしたタスクのリトライ用
+ */
+export async function POST(request: NextRequest) {
   try {
-    // 1. topic_queue から pending の一番古いものを1件取得（affiliate_url も取得）
-    const { data: queued, error: queueError } = await supabase
+    const body = await request.json().catch(() => ({}));
+    const id = typeof body?.id === "string" ? body.id.trim() : "";
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "id を指定してください。" },
+        { status: 400 }
+      );
+    }
+
+    const { data: topics, error: fetchError } = await supabase
       .from("topic_queue")
       .select("id, url, affiliate_url, context, status, created_at")
-      .eq("status", "pending")
-      .order("created_at", { ascending: true })
+      .eq("id", id)
       .limit(1);
 
-    if (queueError) {
-      console.error("cron/create-thread queue fetch error:", queueError);
+    if (fetchError || !topics || topics.length === 0) {
       return NextResponse.json(
-        { error: "topic_queue の取得に失敗しました。" },
-        { status: 500 }
+        { error: "指定されたタスクが見つかりません。" },
+        { status: 404 }
       );
     }
 
-    if (!queued || queued.length === 0) {
-      // フォールバック: 既存スレッドに続きのレス（スレ伸ばし）を追加
-      const { data: threads, error: threadsError } = await supabase
-        .from("promo_threads")
-        .select("id, product_name, key_features, transcript")
-        .limit(100);
-
-      if (threadsError) {
-        console.error("cron/create-thread fallback fetch error:", threadsError);
-        return NextResponse.json(
-          { error: "promo_threads の取得に失敗しました。" },
-          { status: 500 }
-        );
-      }
-
-      if (!threads || threads.length === 0) {
-        return NextResponse.json({
-          status: "no_thread",
-          message: "promo_threads にスレッドが存在しません。",
-        });
-      }
-
-      const thread = threads[
-        Math.floor(Math.random() * threads.length)
-      ] as { id: string; product_name: string; key_features: string | null; transcript: unknown };
-      const transcript = normalizeTranscript(thread.transcript ?? []);
-      const productInfo = `${thread.product_name}\n${thread.key_features ?? ""}`;
-
-      const recentTurns = transcript.slice(-15).reverse();
-      const context = recentTurns.map(
-        (t) => `${t.speaker_name}「${t.content}」`
-      );
-
-      const newComments = await generateContinuationComments(
-        context,
-        productInfo
-      );
-
-      if (newComments.length === 0) {
-        return NextResponse.json({
-          status: "no_new_comments",
-          thread_id: thread.id,
-          message: "生成された追いコメントが0件でした。",
-        });
-      }
-
-      const updatedTranscript = [...transcript, ...newComments];
-
-      const { error: updateError } = await supabase
-        .from("promo_threads")
-        .update({ transcript: updatedTranscript })
-        .eq("id", thread.id);
-
-      if (updateError) {
-        console.error(
-          "cron/create-thread fallback update error:",
-          updateError
-        );
-        return NextResponse.json(
-          { error: "transcript の更新に失敗しました。" },
-          { status: 500 }
-        );
-      }
-
-      return NextResponse.json({
-        status: "extended",
-        thread_id: thread.id,
-        added_count: newComments.length,
-      });
-    }
-
-    const topic = queued[0] as {
+    const topic = topics[0] as {
       id: string;
       url: string | null;
       affiliate_url?: string | null;
@@ -320,48 +191,49 @@ export async function GET(req: Request) {
       status: string;
       created_at: string;
     };
+
     const rawUrl = topic.url?.trim();
-    // 記事内ボタン用: アフィリエイトURLがあればそれ、なければ商品ページURL
-    const buttonUrl =
-      topic.affiliate_url?.trim() || rawUrl || null;
+    const buttonUrl = topic.affiliate_url?.trim() || rawUrl || null;
 
     if (!rawUrl) {
-      // URL が空のレコードはスキップし、done 扱いにして次回以降に進める
       await supabase
         .from("topic_queue")
         .update({ status: "done" })
         .eq("id", topic.id);
-      return NextResponse.json({
-        status: "skipped",
-        message: "URL が空の topic_queue レコードをスキップしました。",
-        topic_id: topic.id,
-      });
+      return NextResponse.json(
+        { error: "URL が空のためスキップしました。", topic_id: topic.id },
+        { status: 400 }
+      );
     }
 
-    // 2. 既存 auto-generate-thread と同様のロジックでスレッド生成
+    // 1. PATCH で pending にリセット（一貫性のため）
+    await supabase
+      .from("topic_queue")
+      .update({ status: "pending" })
+      .eq("id", topic.id);
+
+    // 2. スクレイピング
     const scraped = await scrapePageText(rawUrl);
     if (!scraped.ok) {
-      console.error("cron/create-thread scrape failed:", scraped.error);
-      // 失敗しても status は done にして詰まりを防ぐ
+      console.error("topic-queue/retry scrape failed:", scraped.error);
       await supabase
         .from("topic_queue")
-        .update({ status: "done" })
+        .update({ status: "error" })
         .eq("id", topic.id);
-
       return NextResponse.json(
         {
-          status: "scrape_failed",
-          topic_id: topic.id,
-          message: "ページから商品情報を自動取得できませんでした。",
+          error: "ページから商品情報を自動取得できませんでした。",
           detail: scraped.error,
+          topic_id: topic.id,
         },
-        { status: 200 }
+        { status: 422 }
       );
     }
 
     const scrapedText = scraped.text ?? "";
     const ogImage = "ogImage" in scraped ? scraped.ogImage : undefined;
 
+    // 3. 商品情報抽出
     const extractionPrompt = `
       以下のWebページのテキストから、最も重要な「商品」または「セール情報」を1つ抽出してください。
       数値（価格、割引率など）はテキストに明記されているもの以外、絶対に創作しないでください。
@@ -375,11 +247,11 @@ export async function GET(req: Request) {
       出力は必ず以下のJSONフォーマットのみを返してください。Markdownのコードブロックは不要です。
       {
         "product_name": "商品名（必須・具体的に）",
-        "manufacturer": "メーカー名・ブランド名（例: Anker, Dyson, Apple）（不明なら空文字）",
-        "model_number": "型番（例: A1234, PowerCore 10000）（不明なら空文字）",
-        "price": "価格（例: 9,800円、30%OFF）（不明なら空文字）",
+        "manufacturer": "メーカー名・ブランド名（不明なら空文字）",
+        "model_number": "型番（不明なら空文字）",
+        "price": "価格（不明なら空文字）",
         "selling_point": "魅力的なポイントや特徴（50文字以内）",
-        "key_specs": "主なスペック・数値・特徴（例: 10000mAh、軽量150g、M3チップ）（50文字以内、不明なら空文字）"
+        "key_specs": "主なスペック・数値・特徴（50文字以内、不明なら空文字）"
       }
     `;
 
@@ -407,10 +279,10 @@ export async function GET(req: Request) {
       key_specs: String(parsed.key_specs ?? "").trim(),
     };
 
-    // 3: 無限サクラ会話の初期10件を生成
+    // 4. コメント生成
     let productInfoForComments = buildProductInfoForComments(extracted, rawUrl);
     if (topic.context) {
-      productInfoForComments += `\n\n【重要：スレッド構成への追加指示】\nこのスレッドの会話の流れや結論について、以下の指示を最優先で守ってください：\n"${topic.context}"\n\n※指示に登場する競合製品名（DysonやPanasonicなど）については、あなたの持つ知識を使って具体的に比較・言及してください。`;
+      productInfoForComments += `\n\n【重要：スレッド構成への追加指示】\nこのスレッドの会話の流れや結論について、以下の指示を最優先で守ってください：\n"${topic.context}"\n\n※指示に登場する競合製品名については、あなたの持つ知識を使って具体的に比較・言及してください。`;
     }
 
     const comments: TranscriptTurn[] = [];
@@ -449,7 +321,7 @@ export async function GET(req: Request) {
       `- 推しポイント: ${extracted.selling_point}`,
     ].filter(Boolean);
 
-    const { data: row, error } = await supabase
+    const { data: row, error: insertError } = await supabase
       .from("promo_threads")
       .insert({
         product_name: threadTitle,
@@ -465,15 +337,22 @@ export async function GET(req: Request) {
       )
       .single();
 
-    if (error) {
-      console.error("cron/create-thread Supabase insert error:", error);
+    if (insertError) {
+      console.error("topic-queue/retry Supabase insert error:", insertError);
+      await supabase
+        .from("topic_queue")
+        .update({ status: "error" })
+        .eq("id", topic.id);
       return NextResponse.json(
-        { error: "スレッドの保存に失敗しました。promo_threads テーブルを確認してください。" },
+        {
+          error: "スレッドの保存に失敗しました。",
+          topic_id: topic.id,
+        },
         { status: 500 }
       );
     }
 
-    // 4. キューを done に更新
+    // 5. キューを done に更新
     await supabase
       .from("topic_queue")
       .update({ status: "done" })
@@ -485,16 +364,15 @@ export async function GET(req: Request) {
       thread: row,
     });
   } catch (e) {
-    console.error("cron/create-thread error:", e);
+    console.error("topic-queue/retry error:", e);
     return NextResponse.json(
       {
         error:
           e instanceof Error
             ? e.message
-            : "cron/create-thread 実行中にエラーが発生しました。",
+            : "再実行中にエラーが発生しました。",
       },
       { status: 500 }
     );
   }
 }
-

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+
+export const maxDuration = 60; // 記事生成のAI処理が長いため延長（Vercel Proなら300などに変更可）
 import { scrapePageText } from "@/lib/scraper";
 import { generateStreamComments, generateJSON } from "@/lib/gemini";
 import type { TranscriptTurn } from "@/types/promo";
