@@ -39,3 +39,40 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out forwards;
 }
+
+/* Shine / Shimmer アニメーション（アフィリエイトボタン用） */
+@keyframes shine {
+  0% {
+    transform: translateX(-100%) skewX(-15deg);
+  }
+  8% {
+    transform: translateX(200%) skewX(-15deg);
+  }
+  100% {
+    transform: translateX(200%) skewX(-15deg);
+  }
+}
+
+.affiliate-btn-shine {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.affiliate-btn-shine::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.5),
+    transparent
+  );
+  transform: skewX(-15deg);
+  animation: shine 5s ease-in-out infinite;
+  pointer-events: none;
+}

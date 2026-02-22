@@ -179,15 +179,17 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
               </time>
             )}
             {(thread.affiliate_url ?? thread.source_url) && (
-              <a
-                href={thread.affiliate_url ?? thread.source_url ?? ""}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
-              >
-                商品を見る
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
+              <span className="affiliate-btn-shine rounded-full">
+                <a
+                  href={thread.affiliate_url ?? thread.source_url ?? ""}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-4 py-2 font-bold text-white shadow-md transition-all hover:bg-amber-600 hover:shadow-lg"
+                >
+                  商品を見る
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </span>
             )}
           </div>
         </header>

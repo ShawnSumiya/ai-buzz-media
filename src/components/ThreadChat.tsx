@@ -34,11 +34,8 @@ export function ThreadChat({ transcript, productName }: ThreadChatProps) {
               <span className="text-sm font-semibold text-slate-900">
                 {turn.speaker_name}
               </span>
-              {turn.speaker_attribute && (
-                <span className="text-xs text-slate-400">
-                  {turn.speaker_attribute}
-                </span>
-              )}
+              {/* 肩書き（ペルソナ）は非表示：よりリアルな匿名掲示板の見た目にする */}
+              {/* turn.speaker_attribute はデータとしては保持 */}
               {turn.timestamp && (
                 <span className="ml-auto text-[10px] text-slate-400">
                   {new Date(turn.timestamp).toLocaleDateString("ja-JP", {
