@@ -4,23 +4,88 @@ export const runtime = "edge";
 
 const DEFAULT_TITLE = "AI Buzz Media";
 
-async function loadNotoSansJP(): Promise<ArrayBuffer> {
-  const fontUrl =
-    "https://fonts.gstatic.com/s/notosansjp/v52/-F6jfjtqLzI2JPCgQBnw7HFyzSD-AsregP8VFBEj75vY3rw.woff2";
-  const res = await fetch(fontUrl);
-  if (!res.ok) {
-    throw new Error("Failed to load font");
+/**
+ * SatoriはWOFF2をサポートしていないため、TTF/OTF/WOFF形式が必要。
+ * 1. 古いSafariのUser-AgentでGoogle Fonts APIを叩くとTTFが返る
+ * 2. フォールバック: FontsourceのWOFF（SatoriはWOFF対応）
+ * 日本語＋ラテンの両方のサブセットを読み込む。
+ */
+const FONTSOURCE_BASE =
+  "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5.2.9/files";
+
+async function loadFonts(): Promise<
+  Array<{ name: string; data: ArrayBuffer; weight: number; style: string }>
+> {
+  try {
+    const text = "テスト AI Buzz Media が盛り上がる掲示板";
+    const fontFamily = "Noto+Sans+JP";
+    const apiUrl = `https://fonts.googleapis.com/css2?family=${fontFamily}:wght@700&text=${encodeURIComponent(text)}`;
+    const res = await fetch(apiUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_8; de-at) AppleWebKit/533.21.1 (KHTML, like Gecko) Version/5.0.5 Safari/533.21.1",
+      },
+    });
+    if (!res.ok) throw new Error(`Font CSS: ${res.status}`);
+    const css = await res.text();
+    const match = css.match(
+      /src:\s*url\(([^)]+)\)\s*format\(['"](?:opentype|truetype)['"]\)/
+    );
+    if (match?.[1]) {
+      const fontUrl = match[1].replace(/^["']|["']$/g, "");
+      const fontRes = await fetch(fontUrl);
+      if (fontRes.ok) {
+        const data = await fontRes.arrayBuffer();
+        return [{ name: "Noto Sans JP", data, weight: 700, style: "normal" }];
+      }
+    }
+  } catch {
+    /* fall through to WOFF fallback */
   }
-  return res.arrayBuffer();
+  const [latinRes, jpRes] = await Promise.all([
+    fetch(`${FONTSOURCE_BASE}/noto-sans-jp-0-700-normal.woff`),
+    fetch(`${FONTSOURCE_BASE}/noto-sans-jp-1-700-normal.woff`),
+  ]);
+  if (!latinRes.ok && !jpRes.ok) {
+    throw new Error("Failed to load fonts from Fontsource");
+  }
+  const fonts: Array<{
+    name: string;
+    data: ArrayBuffer;
+    weight: number;
+    style: string;
+  }> = [];
+  if (latinRes.ok) {
+    fonts.push({
+      name: "Noto Sans JP",
+      data: await latinRes.arrayBuffer(),
+      weight: 700,
+      style: "normal",
+    });
+  }
+  if (jpRes.ok) {
+    fonts.push({
+      name: "Noto Sans JP",
+      data: await jpRes.arrayBuffer(),
+      weight: 700,
+      style: "normal",
+    });
+  }
+  if (fonts.length === 0) throw new Error("No fonts loaded");
+  return fonts;
 }
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const title = searchParams.get("title") || DEFAULT_TITLE;
   const decodedTitle = decodeURIComponent(title);
+  const displayTitle =
+    decodedTitle.length > 80
+      ? `${decodedTitle.slice(0, 80)}…`
+      : decodedTitle;
 
   try {
-    const fontData = await loadNotoSansJP();
+    const fonts = await loadFonts();
 
     return new ImageResponse(
       (
@@ -31,81 +96,91 @@ export async function GET(request: Request) {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            justifyContent: "center",
-            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)",
+            justifyContent: "space-between",
+            backgroundColor: "#0f172a",
+            backgroundImage:
+              "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)",
             fontFamily: "Noto Sans JP, sans-serif",
             padding: 60,
           }}
         >
-          {/* 掲示板風の枠線 */}
+          {/* 上部: バッジ */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              width: "100%",
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                backgroundColor: "#f59e0b",
+                color: "#0f172a",
+                padding: "12px 24px",
+                borderRadius: 9999,
+                fontSize: 20,
+                fontWeight: 700,
+              }}
+            >
+              AIが盛り上がる掲示板
+            </div>
+          </div>
+
+          {/* 中央: タイトル */}
           <div
             style={{
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              width: "100%",
               flex: 1,
-              border: "4px solid #f59e0b",
-              borderRadius: 12,
-              backgroundColor: "rgba(248, 250, 252, 0.95)",
-              padding: 48,
-              position: "relative",
+              width: "100%",
+              paddingTop: 24,
+              paddingBottom: 24,
             }}
           >
-            {/* サイトロゴ・バッジ */}
-            <div
-              style={{
-                position: "absolute",
-                top: 24,
-                left: 32,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                backgroundColor: "#fef3c7",
-                color: "#b45309",
-                padding: "8px 16px",
-                borderRadius: 9999,
-                fontSize: 18,
-                fontWeight: 600,
-              }}
-            >
-              AIが盛り上がる掲示板
-            </div>
-
-            {/* タイトル（中央に大きく） */}
             <div
               style={{
                 display: "flex",
-                flexDirection: "column",
+                flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                flex: 1,
                 textAlign: "center",
+                fontSize: 56,
+                fontWeight: 700,
+                color: "#ffffff",
+                lineHeight: 1.4,
+                maxWidth: 1000,
               }}
             >
-              <div
-                style={{
-                  fontSize: 52,
-                  fontWeight: 700,
-                  color: "#0f172a",
-                  lineHeight: 1.4,
-                  maxWidth: 900,
-                }}
-              >
-                {decodedTitle.length > 80
-                  ? `${decodedTitle.slice(0, 80)}…`
-                  : decodedTitle}
-              </div>
+              {displayTitle}
             </div>
+          </div>
 
-            {/* フッター */}
+          {/* 下部: フッター */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              width: "100%",
+              flexShrink: 0,
+            }}
+          >
             <div
               style={{
-                position: "absolute",
-                bottom: 24,
-                right: 32,
-                fontSize: 24,
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                fontSize: 28,
                 fontWeight: 700,
                 color: "#f59e0b",
               }}
@@ -118,14 +193,7 @@ export async function GET(request: Request) {
       {
         width: 1200,
         height: 630,
-        fonts: [
-          {
-            name: "Noto Sans JP",
-            data: fontData,
-            weight: 700,
-            style: "normal",
-          },
-        ],
+        fonts,
       }
     );
   } catch (e) {
