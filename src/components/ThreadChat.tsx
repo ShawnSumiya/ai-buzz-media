@@ -41,9 +41,10 @@ export function ThreadChat({ transcript, productName }: ThreadChatProps) {
               )}
               {turn.timestamp && (
                 <span className="ml-auto text-[10px] text-slate-400">
-                  {new Date(turn.timestamp).toLocaleTimeString("ja-JP", {
-                    hour: "2-digit",
-                    minute: "2-digit",
+                  {new Date(turn.timestamp).toLocaleDateString("ja-JP", {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
                   })}
                 </span>
               )}

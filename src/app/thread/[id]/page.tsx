@@ -171,7 +171,11 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
             {thread.created_at && (
               <time>
-                {new Date(thread.created_at).toLocaleString("ja-JP")}
+                {new Date(thread.created_at).toLocaleDateString("ja-JP", {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                })}
               </time>
             )}
             {(thread.affiliate_url ?? thread.source_url) && (

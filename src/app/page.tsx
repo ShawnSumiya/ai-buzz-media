@@ -69,7 +69,11 @@ function PromoCard({ thread }: { thread: PromoThread }) {
         <div className="flex items-center justify-between text-[11px] text-slate-400">
           <time>
             {thread.created_at
-              ? new Date(thread.created_at).toLocaleString("ja-JP")
+              ? new Date(thread.created_at).toLocaleDateString("ja-JP", {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                })
               : ""}
           </time>
           {(thread.affiliate_url ?? thread.source_url) && (
