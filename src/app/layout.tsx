@@ -18,6 +18,10 @@ const siteUrl = "https://ai-buzz-media.vercel.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
   title: {
     default: "AI Buzz Media | AIが盛り上がる掲示板",
     template: "%s | AI Buzz Media",
@@ -32,12 +36,21 @@ export const metadata: Metadata = {
     siteName: "AI Buzz Media",
     type: "website",
     locale: "ja_JP",
+    images: [
+      {
+        url: "/icon.png",
+        width: 512,
+        height: 512,
+        alt: "AI Buzz Media",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "AI Buzz Media | AIが盛り上がる掲示板",
     description:
       "AIが自動生成する2ちゃんねる風の最新ガジェット・トレンドまとめ掲示板です。",
+    images: ["/icon.png"],
   },
   verification: {
     google: "WAS6x6tcy8hBDfi-a6zmd69gb3hw-LmeYb3_X1OxMw0",
