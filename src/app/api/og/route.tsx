@@ -1,85 +1,13 @@
 import { ImageResponse } from "@vercel/og";
 
+export const runtime = "edge";
+
 const DEFAULT_TITLE = "AI Buzz Media";
 
-type FontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
-type FontStyle = "normal" | "italic";
-
-/**
- * フォント読み込み（Vercel本番でのタイムアウト・フェッチ制限を考慮）。
- * 失敗時は null を返し、画像生成はデフォルトフォントで継続する。
- */
-const FONTSOURCE_BASE =
-  "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5.2.9/files";
-
-async function loadFonts(): Promise<
-  Array<{ name: string; data: ArrayBuffer; weight: FontWeight; style: FontStyle }> | null
-> {
-  try {
-    const text = "テスト AI Buzz Media が盛り上がる掲示板";
-    const fontFamily = "Noto+Sans+JP";
-    const apiUrl = `https://fonts.googleapis.com/css2?family=${fontFamily}:wght@700&text=${encodeURIComponent(text)}`;
-    const res = await fetch(apiUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_8; de-at) AppleWebKit/533.21.1 (KHTML, like Gecko) Version/5.0.5 Safari/533.21.1",
-      },
-    });
-    if (!res.ok) return null;
-    const css = await res.text();
-    const match = css.match(
-      /src:\s*url\(([^)]+)\)\s*format\(['"](?:opentype|truetype)['"]\)/
-    );
-    if (match?.[1]) {
-      const fontUrl = match[1].replace(/^["']|["']$/g, "");
-      const fontRes = await fetch(fontUrl);
-      if (fontRes.ok) {
-        const data = await fontRes.arrayBuffer();
-        return [
-          {
-            name: "Noto Sans JP",
-            data,
-            weight: 700 as FontWeight,
-            style: "normal" as FontStyle,
-          },
-        ];
-      }
-    }
-  } catch {
-    /* fall through to Fontsource fallback */
-  }
-  try {
-    const [latinRes, jpRes] = await Promise.all([
-      fetch(`${FONTSOURCE_BASE}/noto-sans-jp-0-700-normal.woff`),
-      fetch(`${FONTSOURCE_BASE}/noto-sans-jp-1-700-normal.woff`),
-    ]);
-    const fonts: Array<{
-      name: string;
-      data: ArrayBuffer;
-      weight: FontWeight;
-      style: FontStyle;
-    }> = [];
-    if (latinRes.ok) {
-      fonts.push({
-        name: "Noto Sans JP",
-        data: await latinRes.arrayBuffer(),
-        weight: 700 as FontWeight,
-        style: "normal" as FontStyle,
-      });
-    }
-    if (jpRes.ok) {
-      fonts.push({
-        name: "Noto Sans JP",
-        data: await jpRes.arrayBuffer(),
-        weight: 700 as FontWeight,
-        style: "normal" as FontStyle,
-      });
-    }
-    return fonts.length > 0 ? fonts : null;
-  } catch {
-    return null;
-  }
-}
+// WOFF使用: 日本語TTFは9MB超でVercel Edge 500KB制限に抵触するため
+const fontData = fetch(
+  new URL("./NotoSansJP-Bold.woff", import.meta.url)
+).then((res) => res.arrayBuffer());
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -91,7 +19,7 @@ export async function GET(request: Request) {
       : decodedTitle;
 
   try {
-    const fonts = await loadFonts();
+    const fontBuffer = await fontData;
 
     return new ImageResponse(
       (
@@ -106,7 +34,7 @@ export async function GET(request: Request) {
             backgroundColor: "#0f172a",
             backgroundImage:
               "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)",
-            fontFamily: fonts ? "Noto Sans JP, sans-serif" : "sans-serif",
+            fontFamily: "Noto Sans JP, sans-serif",
             padding: 60,
           }}
         >
@@ -199,7 +127,14 @@ export async function GET(request: Request) {
       {
         width: 1200,
         height: 630,
-        ...(fonts && fonts.length > 0 ? { fonts } : {}),
+        fonts: [
+          {
+            name: "Noto Sans JP",
+            data: fontBuffer,
+            weight: 700 as const,
+            style: "normal" as const,
+          },
+        ],
       }
     );
   } catch (e) {
