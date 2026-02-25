@@ -3,6 +3,8 @@ import { supabase } from "@/lib/supabase";
 import { generateAppendComments } from "@/lib/gemini";
 import type { TranscriptTurn } from "@/types/promo";
 
+export const maxDuration = 300; // スレ伸ばしのAI処理が長いため延長（Vercel Pro プラン）
+
 /** レガシー形式を新形式に変換（append-comments API と同等のロジック） */
 function normalizeTranscript(raw: unknown): TranscriptTurn[] {
   if (!Array.isArray(raw)) return [];

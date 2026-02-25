@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-
-export const maxDuration = 60; // 記事生成のAI処理が長いため延長（Vercel Proなら300などに変更可）
 import { scrapePageText } from "@/lib/scraper";
 import {
   generateStreamComments,
   generateJSON,
   generateContent,
-  generateContinuationComments,
+  generateAppendComments,
 } from "@/lib/gemini";
 import type { TranscriptTurn } from "@/types/promo";
+
+export const maxDuration = 300; // 記事生成のAI処理が長いため延長（Vercel Pro プランの最大値付近）
 
 interface ExtractedProduct {
   product_name: string;
@@ -251,10 +251,10 @@ export async function GET(req: Request) {
     }
 
     if (!queued || queued.length === 0) {
-      // フォールバック: 既存スレッドに続きのレス（スレ伸ばし）を追加
+      // フォールバック: 既存スレッドからランダムに1件選び、extend-thread と同等ロジックでレスを追加
       const { data: threads, error: threadsError } = await supabase
         .from("promo_threads")
-        .select("id, product_name, key_features, transcript")
+        .select("id, product_name, key_features, transcript, created_at")
         .limit(100);
 
       if (threadsError) {
@@ -272,21 +272,24 @@ export async function GET(req: Request) {
         });
       }
 
-      const thread = threads[
-        Math.floor(Math.random() * threads.length)
-      ] as { id: string; product_name: string; key_features: string | null; transcript: unknown };
+      const thread =
+        threads[Math.floor(Math.random() * threads.length)] as {
+          id: string;
+          product_name: string;
+          key_features: string | null;
+          transcript: unknown;
+        };
+
       const transcript = normalizeTranscript(thread.transcript ?? []);
       const productInfo = `${thread.product_name}\n${thread.key_features ?? ""}`;
 
-      const recentTurns = transcript.slice(-15).reverse();
+      // extend-thread と同様、直近の会話を文脈として渡す（新しい順）
+      const recentTurns = transcript.slice(-10).reverse();
       const context = recentTurns.map(
         (t) => `${t.speaker_name}「${t.content}」`
       );
 
-      const newComments = await generateContinuationComments(
-        context,
-        productInfo
-      );
+      const newComments = await generateAppendComments(context, productInfo);
 
       if (newComments.length === 0) {
         return NextResponse.json({

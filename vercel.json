@@ -1,5 +1,15 @@
 {
   "rewrites": [
     { "source": "/(.*)", "destination": "/$1" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/create-thread",
+      "schedule": "0 21,3,9,15 * * *"
+    },
+    {
+      "path": "/api/cron/extend-thread",
+      "schedule": "*/30 * * * *"
+    }
   ]
 }
