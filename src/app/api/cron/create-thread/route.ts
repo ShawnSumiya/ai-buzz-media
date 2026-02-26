@@ -8,6 +8,7 @@ import {
   generateAppendComments,
 } from "@/lib/gemini";
 import type { TranscriptTurn } from "@/types/promo";
+import type { ImagePart } from "@/lib/gemini";
 
 export const maxDuration = 300; // 記事生成のAI処理が長いため延長（Vercel Pro プランの最大値付近）
 
@@ -18,6 +19,43 @@ interface ExtractedProduct {
   price: string;
   selling_point: string;
   key_specs: string;
+}
+
+/** og:image URLから画像を取得し、Base64化して ImagePart を返す。失敗時は null（フォールバック） */
+async function fetchOgImageAsImagePart(
+  ogImageUrl: string | null | undefined,
+  pageUrl: string
+): Promise<ImagePart | null> {
+  if (!ogImageUrl?.trim()) return null;
+  try {
+    const resolvedUrl = ogImageUrl.startsWith("http")
+      ? ogImageUrl
+      : new URL(ogImageUrl, pageUrl).toString();
+    const res = await fetch(resolvedUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    const base64 = buf.toString("base64");
+    const contentType = res.headers.get("content-type") ?? "";
+    const mimeType = (() => {
+      const mt = contentType.split(";")[0].trim().toLowerCase();
+      if (mt === "image/png" || mt === "image/jpeg" || mt === "image/webp" || mt === "image/gif")
+        return mt;
+      const lower = resolvedUrl.toLowerCase();
+      if (lower.includes(".png")) return "image/png";
+      if (lower.includes(".webp")) return "image/webp";
+      if (lower.includes(".gif")) return "image/gif";
+      return "image/jpeg";
+    })();
+    return { inlineData: { data: base64, mimeType } };
+  } catch (e) {
+    console.warn("fetchOgImageAsImagePart failed (continuing with text only):", e);
+    return null;
+  }
 }
 
 /** レガシー形式を新形式に変換（extend-thread / append-comments と同等） */
@@ -56,6 +94,8 @@ function normalizeTranscript(raw: unknown): TranscriptTurn[] {
 
 /** スレッドタイトル生成用の厳格なルール（AIが絶対に守ること） */
 const THREAD_TITLE_SYSTEM_INSTRUCTION = `あなたは5ch風のスレッドタイトルを1つだけ生成するAIです。
+
+【重要】画像データが提供された場合、画像内に書かれているキャッチコピー、数字（割引率、出力W数、容量、サイズなど）、およびデザインの特徴を視覚的に読み取ってください。読み取った具体的な情報を元に、エアプにならない解像度の高いスレタイとレスを生成してください。
 
 【🚨 最重要：渡された商品のみ言及すること（ハルシネーション厳禁）】
 - スレッドのタイトルは、必ず【商品情報】で渡された商品についてのみ言及すること。
@@ -117,7 +157,8 @@ const THREAD_TITLE_SYSTEM_INSTRUCTION = `あなたは5ch風のスレッドタイ
 /** AIでスレッドタイトルを生成（NGルール厳守）。失敗時はフォールバックを返す。 */
 async function generateThreadTitle(
   p: ExtractedProduct,
-  context?: string | null
+  context?: string | null,
+  imagePart?: ImagePart | null
 ): Promise<string> {
   const productInfo = [
     `【商品名】${p.product_name}`,
@@ -138,7 +179,11 @@ ${productInfo}
 上記の情報を基に、【厳格なNGルール】を守って、具体的な商品名を含んだ多様なスレッドタイトルを生成してください。`;
 
   try {
-    const title = await generateContent(prompt, THREAD_TITLE_SYSTEM_INSTRUCTION);
+    const title = await generateContent(
+      prompt,
+      THREAD_TITLE_SYSTEM_INSTRUCTION,
+      imagePart ?? undefined
+    );
     const trimmed = (title ?? "").trim().replace(/^["']|["']$/g, "");
     if (trimmed.length >= 5 && trimmed.length <= 80) return trimmed;
   } catch (e) {
@@ -178,6 +223,8 @@ function buildProductInfoForComments(p: ExtractedProduct, url: string): string {
 
 /** 会話生成用：>>1で略称を明示し、その後は略称＋代名詞で自然な会話にすること */
 const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitter)に書き込む本物の人間です。商品スレを見てリアルに反応する。
+
+【重要】画像データが提供された場合、画像内に書かれているキャッチコピー、数字（割引率、出力W数、容量、サイズなど）、およびデザインの特徴を視覚的に読み取ってください。読み取った具体的な情報を元に、エアプにならない解像度の高いスレタイとレスを生成してください。
 
 【★最重要：渡された商品のみ言及（ハルシネーション厳禁）★】
 - コメント内容は、必ず【商品情報】で渡された商品についてのみ言及すること。
@@ -357,7 +404,11 @@ export async function GET(req: Request) {
         (t) => `${t.speaker_name}「${t.content}」`
       );
 
-      const newComments = await generateAppendComments(context, productInfo);
+      const newComments = await generateAppendComments(
+        context,
+        productInfo,
+        undefined
+      );
 
       if (newComments.length === 0) {
         return NextResponse.json({
@@ -441,6 +492,7 @@ export async function GET(req: Request) {
 
     const scrapedText = scraped.text ?? "";
     const ogImage = "ogImage" in scraped ? scraped.ogImage : undefined;
+    const imagePart = await fetchOgImageAsImagePart(ogImage, rawUrl);
 
     const extractionPrompt = `
       以下のWebページのテキストから、最も重要な「商品」または「セール情報」を1つ抽出してください。
@@ -452,6 +504,7 @@ export async function GET(req: Request) {
 
     const extractionSystemInstruction = `
       あなたは厳格なデータ抽出AIです。
+      画像データが提供された場合、画像内に書かれているキャッチコピー、数字（割引率、出力W数、容量、サイズなど）、およびデザインの特徴を視覚的に読み取ってください。読み取った具体的な情報も抽出結果に反映してください。
       出力は必ず以下のJSONフォーマットのみを返してください。Markdownのコードブロックは不要です。
       {
         "product_name": "商品名（必須・具体的に）",
@@ -465,7 +518,8 @@ export async function GET(req: Request) {
 
     const extractionJsonStr = await generateJSON(
       extractionPrompt,
-      extractionSystemInstruction
+      extractionSystemInstruction,
+      imagePart ?? undefined
     );
 
     const cleanedJsonStr = extractionJsonStr
@@ -498,7 +552,10 @@ export async function GET(req: Request) {
       const batch = await generateStreamComments(
         comments.map((c) => `${c.speaker_name}「${c.content}」`),
         productInfoForComments,
-        { systemInstruction: CRON_COMMENTS_SYSTEM_INSTRUCTION }
+        {
+          systemInstruction: CRON_COMMENTS_SYSTEM_INSTRUCTION,
+          imagePart: imagePart ?? undefined,
+        }
       );
       if (!batch.length) break;
       comments.push(...batch);
@@ -517,7 +574,11 @@ export async function GET(req: Request) {
       speaker_name: nameMap.get(t.speaker_name) ?? t.speaker_name,
     }));
 
-    const threadTitle = await generateThreadTitle(extracted, topic.context);
+    const threadTitle = await generateThreadTitle(
+      extracted,
+      topic.context,
+      imagePart
+    );
 
     const keyFeaturesLines = [
       `【抽出された目玉情報】`,

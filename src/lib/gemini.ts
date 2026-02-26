@@ -82,10 +82,16 @@ async function generateWithRetry<T>(
   throw new Error("generateWithRetry: unexpected state");
 }
 
+/** 画像パーツ型（マルチモーダル用） */
+export type ImagePart = {
+  inlineData: { data: string; mimeType: string };
+};
+
 // 汎用的な生成関数（他でも使い回せるようにエクスポート推奨）
 export async function generateContent(
   prompt: string,
-  systemInstruction?: string
+  systemInstruction?: string,
+  imagePart?: ImagePart
 ) {
   try {
     const model = genAI.getGenerativeModel({
@@ -98,9 +104,12 @@ export async function generateContent(
         : undefined,
     });
 
+    const userParts: Array<{ text: string } | ImagePart> = [{ text: prompt }];
+    if (imagePart) userParts.push(imagePart);
+
     const result = await generateWithRetry(() =>
       model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: [{ role: "user", parts: userParts }],
         safetySettings,
       })
     );
@@ -116,7 +125,8 @@ export async function generateContent(
 // JSONを強制的に返させるためのヘルパー
 export async function generateJSON(
   prompt: string,
-  systemInstruction?: string
+  systemInstruction?: string,
+  imagePart?: ImagePart
 ) {
   try {
     const model = genAI.getGenerativeModel({
@@ -125,9 +135,12 @@ export async function generateJSON(
       systemInstruction: systemInstruction,
     });
 
+    const userParts: Array<{ text: string } | ImagePart> = [{ text: prompt }];
+    if (imagePart) userParts.push(imagePart);
+
     const result = await generateWithRetry(() =>
       model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: [{ role: "user", parts: userParts }],
         safetySettings,
       })
     );
@@ -140,6 +153,8 @@ export async function generateJSON(
 }
 
 const SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitter)に書き込む本物の人間です。商品スレを見てリアルに反応する。
+
+【重要】画像データが提供された場合、画像内に書かれているキャッチコピー、数字（割引率、出力W数、容量、サイズなど）、およびデザインの特徴を視覚的に読み取ってください。読み取った具体的な情報を元に、エアプにならない解像度の高いスレタイとレスを生成してください。
 
 【★最重要：渡された商品のみ言及（ハルシネーション厳禁）★】
 - コメント内容は、必ず【商品情報】で渡された商品についてのみ言及すること。
@@ -223,7 +238,7 @@ Output valid JSON only, no markdown code fences or extra text.`;
 export async function generateStreamComments(
   context: string[],
   productInfo: string,
-  options?: { systemInstruction?: string }
+  options?: { systemInstruction?: string; imagePart?: ImagePart }
 ): Promise<TranscriptTurn[]> {
   const contextText =
     context.length > 0
@@ -260,7 +275,11 @@ Output a single JSON object with one key:
 id, timestamp は不要。Output valid JSON only.`;
 
   const systemInstruction = options?.systemInstruction ?? SYSTEM_INSTRUCTION;
-  const text = await generateJSON(prompt, systemInstruction);
+  const text = await generateJSON(
+    prompt,
+    systemInstruction,
+    options?.imagePart
+  );
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
   const parsed = JSON.parse(cleaned) as {
     comments: { speaker_name: string; speaker_attribute: string; content: string }[];
@@ -280,6 +299,8 @@ id, timestamp は不要。Output valid JSON only.`;
 
 const APPEND_COMMENTS_SYSTEM = `あなたは5ちゃんねるやX(Twitter)に書き込む本物の人間です。
 既存コメントの盛り上がりに便乗して、リアルな追いコメントを5件生成する。
+
+【重要】画像データが提供された場合、画像内に書かれているキャッチコピー、数字（割引率、出力W数、容量、サイズなど）、およびデザインの特徴を視覚的に読み取ってください。読み取った具体的な情報を元に、エアプにならない解像度の高いスレタイとレスを生成してください。
 
 【最重要】コメントは渡された【商品情報】の商品のみ言及すること。他商品名（Apple Watch等）を混入させないこと。
 
@@ -376,7 +397,8 @@ function generateUniqueUserNames(count: number): string[] {
  */
 export async function generateAppendComments(
   context: string[],
-  productInfo: string
+  productInfo: string,
+  imagePart?: ImagePart
 ): Promise<TranscriptTurn[]> {
   const contextText =
     context.length > 0
@@ -405,7 +427,7 @@ Output a single JSON object:
 
 Output valid JSON only.`;
 
-  const text = await generateJSON(prompt, APPEND_COMMENTS_SYSTEM);
+  const text = await generateJSON(prompt, APPEND_COMMENTS_SYSTEM, imagePart);
   const cleaned = text
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
