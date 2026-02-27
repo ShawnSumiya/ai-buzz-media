@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { scrapePageText } from "@/lib/scraper";
+import { getRakutenItemDetails } from "@/lib/rakuten";
 import {
   generateStreamComments,
   generateJSON,
@@ -470,7 +471,11 @@ export async function GET(req: Request) {
     }
 
     // 2. 既存 auto-generate-thread と同様のロジックでスレッド生成
-    const scraped = await scrapePageText(rawUrl);
+    // 楽天商品の場合はURLから公式商品説明を取得（itemCode完全一致検索）
+    const [scraped, rakutenDetails] = await Promise.all([
+      scrapePageText(rawUrl),
+      getRakutenItemDetails(rawUrl),
+    ]);
     if (!scraped.ok) {
       console.error("cron/create-thread scrape failed:", scraped.error);
       // 失敗しても status は done にして詰まりを防ぐ
@@ -543,6 +548,9 @@ export async function GET(req: Request) {
 
     // 3: 無限サクラ会話の初期10件を生成
     let productInfoForComments = buildProductInfoForComments(extracted, rawUrl);
+    if (rakutenDetails) {
+      productInfoForComments += `\n\n【公式商品説明】\n${rakutenDetails}`;
+    }
     if (topic.context) {
       productInfoForComments += `\n\n【重要：スレッド構成への追加指示】\nこのスレッドの会話の流れや結論について、以下の指示を最優先で守ってください：\n"${topic.context}"\n\n※指示に登場する競合製品名（DysonやPanasonicなど）については、あなたの持つ知識を使って具体的に比較・言及してください。`;
     }
