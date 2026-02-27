@@ -47,10 +47,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const trimmedUrl = urlParam.trim();
+    const trimmedInput = urlParam.trim();
+
+    // 楽天アフィリエイトHTMLタグ（<a href="...">...</a>）の場合は href からURLを抽出
+    let targetUrl: string;
+    if (trimmedInput.toLowerCase().startsWith("<a ")) {
+      const hrefMatch = trimmedInput.match(/href\s*=\s*["']([^"']+)["']/i);
+      const extractedUrl = hrefMatch?.[1]?.trim();
+      if (!extractedUrl) {
+        return NextResponse.json(
+          { error: "HTMLタグからURLを抽出できませんでした。href属性を確認してください。" },
+          { status: 400 }
+        );
+      }
+      targetUrl = extractedUrl;
+    } else {
+      targetUrl = trimmedInput;
+    }
+
     // 簡易URLバリデーション
     try {
-      new URL(trimmedUrl);
+      new URL(targetUrl);
     } catch {
       return NextResponse.json(
         { error: "有効なURLを指定してください。" },
@@ -59,9 +76,8 @@ export async function GET(request: NextRequest) {
     }
 
     // URLのパースと実際のターゲットURLの抽出
-    let targetUrl = trimmedUrl;
     try {
-      const parsedUrl = new URL(trimmedUrl);
+      const parsedUrl = new URL(targetUrl);
       // 楽天アフィリエイトのリンクかどうかを判定
       if (parsedUrl.hostname === "hb.afl.rakuten.co.jp") {
         const pcUrl = parsedUrl.searchParams.get("pc");

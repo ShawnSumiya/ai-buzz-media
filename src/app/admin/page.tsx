@@ -170,7 +170,7 @@ export default function AdminPage() {
   async function handleFetchTitle() {
     const trimmedUrl = url.trim();
     if (!trimmedUrl) {
-      setError("URL を入力してからタイトルを取得してください。");
+      setError("URL または楽天アフィリエイトHTMLタグを入力してからタイトルを取得してください。");
       return;
     }
     setError(null);
