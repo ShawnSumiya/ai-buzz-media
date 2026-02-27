@@ -98,10 +98,15 @@ const THREAD_TITLE_SYSTEM_INSTRUCTION = `あなたは5ch風のスレッドタイ
 
 【重要】画像データが提供された場合、画像内に書かれているキャッチコピー、数字（割引率、出力W数、容量、サイズなど）、およびデザインの特徴を視覚的に読み取ってください。読み取った具体的な情報を元に、エアプにならない解像度の高いスレタイとレスを生成してください。
 
-【🚨 最重要：渡された商品のみ言及すること（ハルシネーション厳禁）】
+【🚨 LP対策（画像情報の最優先）】
+- テキスト情報（productInfo）が極端に少ない場合、AIは「画像データ（imagePart）」を最優先の情報源としてください。
+- 画像内に「脱毛器」「Ulike」「MAX57%OFF」などの文字があれば、それを商品のコア情報として認識し、タイトルに反映させてください。
+
+【🚨 最重要：渡された商品のみ言及すること（ハルシネーション完全禁止）】
 - スレッドのタイトルは、必ず【商品情報】で渡された商品についてのみ言及すること。
-- 絶対に他の商品名（Apple Watch、iPhone、MacBook、Dyson、Anker など、渡されていない商品）をタイトルに混入させないこと。
+- 絶対に他の商品名（Apple Watch、iPhone、MacBook、Dyson、Anker、AirPodsケース など、渡されていない商品）をタイトルに混入させないこと。
 - 商品情報に記載されていない商品を創作・推測してタイトルに入れてはならない。
+- 【重要】商品テキスト（productInfo）や画像（imagePart）から商品の正体（カテゴリ、ブランド等）が全く読み取れない場合、無関係な商品を想像して語ることを固く禁じる。情報が不足している場合は、提供された画像（バナー広告等）の視覚情報（書かれているキャッチコピーや人物、雰囲気）のみを事実として扱い、それをベースにタイトルを構築すること。
 
 【🚨 使用禁止（NGワード）― タイトル生成において一切使用禁止】
 以下の単語・フレーズは**絶対にタイトルに入れないこと**。検出されたらシステムエラーです。
@@ -159,9 +164,11 @@ const THREAD_TITLE_SYSTEM_INSTRUCTION = `あなたは5ch風のスレッドタイ
 async function generateThreadTitle(
   p: ExtractedProduct,
   context?: string | null,
-  imagePart?: ImagePart | null
+  imagePart?: ImagePart | null,
+  affiliateText?: string | null
 ): Promise<string> {
-  const productInfo = [
+  const baseParts = [
+    affiliateText ? `【確定商品情報・楽天公式説明】\n${affiliateText}` : null,
     `【商品名】${p.product_name}`,
     p.manufacturer ? `【メーカー】${p.manufacturer}` : null,
     p.model_number ? `【型番】${p.model_number}` : null,
@@ -172,6 +179,8 @@ async function generateThreadTitle(
   ]
     .filter(Boolean)
     .join("\n");
+
+  const productInfo = baseParts;
 
   const prompt = `以下の商品情報を元に、5ch風のスレッドタイトルを1つだけ生成してください。
 
@@ -227,9 +236,14 @@ const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitt
 
 【重要】画像データが提供された場合、画像内に書かれているキャッチコピー、数字（割引率、出力W数、容量、サイズなど）、およびデザインの特徴を視覚的に読み取ってください。読み取った具体的な情報を元に、エアプにならない解像度の高いスレタイとレスを生成してください。
 
-【★最重要：渡された商品のみ言及（ハルシネーション厳禁）★】
+【★LP対策（画像情報の最優先）★】
+- テキスト情報が極端に少ない場合、AIは「画像データ（imagePart）」を最優先の情報源としてください。
+- 画像内に「脱毛器」「Ulike」「MAX57%OFF」などの文字があれば、それを商品のコア情報として認識し、会話に反映させてください。
+
+【★最重要：渡された商品のみ言及（ハルシネーション完全禁止）★】
 - コメント内容は、必ず【商品情報】で渡された商品についてのみ言及すること。
-- 絶対に他の商品名（Apple Watch、iPhone、MacBook など、渡されていない商品）をコメントに混入させないこと。
+- 絶対に他の商品名（Apple Watch、iPhone、MacBook、AirPodsケース など、渡されていない商品）をコメントに混入させないこと。
+- 商品テキスト（productInfo）や画像（imagePart）から商品の正体（カテゴリ、ブランド等）が全く読み取れない場合、無関係な商品を想像して語ることを固く禁じる。情報が不足している場合は、提供された画像（バナー広告等）の視覚情報（書かれているキャッチコピーや人物、雰囲気）のみを事実として扱い、それをベースに話題を構築すること。
 
 【★重要：product_name のフルネーム・コピペ禁止／略称・通称の必須化★】
 - 【商品名】として渡される文字列（product_name）は、SEOキーワードを羅列した「不自然に長い商品タイトル」である可能性が高い。
@@ -246,13 +260,10 @@ const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitt
 - 悪い例：
   - 「Anker Solix F1200 ポータブル電源1229Wh 蓄電池 ポータブルバッテリー... ってどうなの？」（ECサイトの商品名丸写し）
 
-【★文脈と主語の提示ルール（>>1 と >>2以降）★】
-- このスレッドの最初の発言（>>1 に相当するコメント）では、必ず上記の「略称・通称」を使って、**何について語るスレッドなのかを明確にすること。**
-  - 例: 「Ankerのポータブル電源F1200買ったやついる？」など。
-- >>2以降のレスでは、毎回フルで略称を連呼するのではなく、
-  - 「それ」「あのメーカーのやつ」「さっきのポータブル電源」などの自然な代名詞・言い換え
-  - ＋ときどき略称（Ankerのポータブル電源 / F1200 など）
-  をバランスよく混ぜて、人間らしいテンポの会話にすること。
+【★会話構造の指定（商品名の連呼禁止）★】
+- スレ立て主（>>1）またはタイトル：必ず略称・通称を用いて、**何について話すかを明示すること。** 例: 「Ankerのポータブル電源F1200買ったやついる？」など。
+- >>2以降のレス：>>1で提示された対象を前提とし、「それ」「あれ」「あのブランドのやつ」などの代名詞を使用するか、主語自体を省略すること。
+- **全員が律儀に商品名から会話を始める不自然な挙動を禁止する。** >>2以降は原則として代名詞・主語省略で会話を継続し、略称は必要に応じてのみ使用すること。
 
 【絶対守ること】
 - 敬語禁止。タメ口・ネットスラング必須（「マジか」「これ神」「うわ」「ｗ」「（笑）」など）
@@ -276,9 +287,9 @@ const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitt
   - 目玉、目玉商品、目玉キャンペーン
 
 【システムエラー条件】
-- もし product_name をそのままコピペした不自然に長い商品名をコメントに出力したり、
-  商品名・ブランド名・カテゴリ・型番・特徴のいずれも含まない抽象的なコメント（「これ」「あの商品」「話題の品」「このページ」など）や、
-  NGワード（錬金術、目玉、目玉商品、目玉キャンペーン 等）を含むコメントを出力した場合、その出力は**システムエラーとして即座に破棄される**ものとみなす。
+- product_name をそのままコピペした不自然に長い商品名をコメントに出力した場合、システムエラーとする。
+- スレッドの最初（>>1相当）で略称・通称を使わず、何について話すか不明な抽象的なコメントのみを出力した場合、システムエラーとする。
+- NGワード（錬金術、目玉、目玉商品、目玉キャンペーン 等）を含むコメントは**システムエラーとして即座に破棄される**。
 - モデルは絶対にそのようなコメントを出力してはならない。
 
 Output valid JSON only, no markdown code fences or extra text.`;
@@ -350,10 +361,10 @@ export async function GET(req: Request) {
   // --- セキュリティチェック終了 ---
 
   try {
-    // 1. topic_queue から pending の一番古いものを1件取得（affiliate_url も取得）
+    // 1. topic_queue から pending の一番古いものを1件取得（affiliate_url, affiliate_text も取得）
     const { data: queued, error: queueError } = await supabase
       .from("topic_queue")
-      .select("id, url, affiliate_url, context, status, created_at")
+      .select("id, url, affiliate_url, affiliate_text, context, status, created_at")
       .eq("status", "pending")
       .order("created_at", { ascending: true })
       .limit(1);
@@ -448,6 +459,7 @@ export async function GET(req: Request) {
       id: string;
       url: string | null;
       affiliate_url?: string | null;
+      affiliate_text?: string | null;
       context?: string | null;
       status: string;
       created_at: string;
@@ -509,6 +521,7 @@ export async function GET(req: Request) {
 
     const extractionSystemInstruction = `
       あなたは厳格なデータ抽出AIです。
+      【LP対策】テキスト情報が極端に少ない場合、画像データ（imagePart）を最優先の情報源としてください。画像内に「脱毛器」「Ulike」「MAX57%OFF」などの文字があれば、それを商品のコア情報として認識し抽出結果に反映してください。
       画像データが提供された場合、画像内に書かれているキャッチコピー、数字（割引率、出力W数、容量、サイズなど）、およびデザインの特徴を視覚的に読み取ってください。読み取った具体的な情報も抽出結果に反映してください。
       出力は必ず以下のJSONフォーマットのみを返してください。Markdownのコードブロックは不要です。
       {
@@ -547,7 +560,12 @@ export async function GET(req: Request) {
     };
 
     // 3: 無限サクラ会話の初期10件を生成
+    // affiliate_text（楽天HTMLタグから抽出した公式説明）があれば最優先で先頭に結合
+    const affiliateText = topic.affiliate_text?.trim() || null;
     let productInfoForComments = buildProductInfoForComments(extracted, rawUrl);
+    if (affiliateText) {
+      productInfoForComments = `【確定商品情報・楽天公式説明（最優先）】\n${affiliateText}\n\n${productInfoForComments}`;
+    }
     if (rakutenDetails) {
       productInfoForComments += `\n\n【公式商品説明】\n${rakutenDetails}`;
     }
@@ -585,7 +603,8 @@ export async function GET(req: Request) {
     const threadTitle = await generateThreadTitle(
       extracted,
       topic.context,
-      imagePart
+      imagePart,
+      affiliateText
     );
 
     const keyFeaturesLines = [

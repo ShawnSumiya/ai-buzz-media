@@ -340,14 +340,14 @@ export default function AdminPage() {
             <div>
               <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-700">
                 <Link2 className="h-4 w-4" />
-                商品ページURL（必須）
+                商品ページURL または 楽天アフィリエイトHTMLタグ（必須）
               </label>
               <div className="flex gap-2">
                 <input
-                  type="url"
+                  type="text"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://example.com/product"
+                  placeholder={'URL または楽天 <a href="...">テキスト</a> タグ'}
                   className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
                 />
                 <button

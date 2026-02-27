@@ -1,6 +1,33 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
+/** 楽天アフィリエイト「テキストのみ」HTMLタグかどうかを判定 */
+function isRakutenAffiliateHtmlTag(input: string): boolean {
+  return input.trim().toLowerCase().startsWith("<a ");
+}
+
+/**
+ * HTMLタグ（<a href="...">...</a>）からURLとリンクテキストを抽出
+ * @returns { url, affiliateText } 抽出できたもののみ。失敗時は null
+ */
+function parseAffiliateHtmlTag(
+  input: string
+): { url: string; affiliateText: string } | null {
+  const trimmed = input.trim();
+  if (!isRakutenAffiliateHtmlTag(trimmed)) return null;
+
+  // href 属性を抽出（href="..." または href='...'）
+  const hrefMatch = trimmed.match(/href\s*=\s*["']([^"']+)["']/i);
+  const url = hrefMatch?.[1]?.trim();
+  if (!url) return null;
+
+  // <a> と </a> の間のテキストを抽出
+  const textMatch = trimmed.match(/<a\s[^>]*>([\s\S]*?)<\/a>/i);
+  const affiliateText = textMatch?.[1]?.trim() ?? "";
+
+  return { url, affiliateText };
+}
+
 // RLSを無視できる特権クライアント
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,7 +41,8 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    const rawUrl = typeof body?.url === "string" ? body.url.trim() : "";
+    const rawInput =
+      typeof body?.url === "string" ? body.url.trim() : "";
     const title =
       typeof body?.title === "string" ? body.title.trim() || null : null;
     const affiliateUrl =
@@ -22,9 +50,9 @@ export async function POST(request: NextRequest) {
     const context =
       typeof body?.context === "string" ? body.context.trim() || null : null;
 
-    if (!rawUrl) {
+    if (!rawInput) {
       return NextResponse.json(
-        { error: "url を指定してください。" },
+        { error: "url または楽天アフィリエイトのHTMLタグを指定してください。" },
         { status: 400 }
       );
     }
@@ -35,16 +63,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 楽天アフィリエイトHTMLタグ（<a href="...">...</a>）の場合は解析して抽出
+    let urlToStore: string;
+    let affiliateTextToStore: string | null = null;
+
+    const parsed = parseAffiliateHtmlTag(rawInput);
+    if (parsed) {
+      urlToStore = parsed.url;
+      if (parsed.affiliateText) {
+        affiliateTextToStore = parsed.affiliateText;
+      }
+    } else {
+      // 通常のURLとしてそのまま使用
+      urlToStore = rawInput;
+    }
+
     const { data, error } = await supabaseAdmin
       .from("topic_queue")
       .insert({
-        url: rawUrl,
+        url: urlToStore,
         title: title || null,
         affiliate_url: affiliateUrl || null,
+        affiliate_text: affiliateTextToStore,
         context,
         status: "pending",
       })
-      .select("id, url, title, affiliate_url, context, status, created_at")
+      .select("id, url, title, affiliate_url, affiliate_text, context, status, created_at")
       .single();
 
     if (error) {
@@ -75,7 +119,7 @@ export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
       .from("topic_queue")
-      .select("id, url, title, affiliate_url, context, status, created_at")
+      .select("id, url, title, affiliate_url, affiliate_text, context, status, created_at")
       .order("created_at", { ascending: true })
       .limit(100);
 
@@ -125,7 +169,7 @@ export async function PATCH(request: NextRequest) {
       .from("topic_queue")
       .update({ status })
       .eq("id", id)
-      .select("id, url, title, affiliate_url, context, status, created_at")
+      .select("id, url, title, affiliate_url, affiliate_text, context, status, created_at")
       .single();
 
     if (error) {
