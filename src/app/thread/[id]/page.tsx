@@ -71,8 +71,12 @@ export async function generateMetadata({
   const transcript = normalizeTranscript((row as { transcript?: unknown }).transcript ?? []);
   const title = String((row as { product_name?: string }).product_name ?? "スレッド");
   const description = getFirstCommentExcerpt(transcript);
-  const encodedTitle = encodeURIComponent(title);
-  const ogImageUrl = `/api/og?title=${encodedTitle}`;
+  const dbOgImageUrl =
+    (row as { og_image_url?: string | null }).og_image_url ?? null;
+  const ogImageUrl =
+    (typeof dbOgImageUrl === "string" && dbOgImageUrl.trim().length > 0)
+      ? dbOgImageUrl
+      : "/icon.png";
   const url = `${siteUrl}/thread/${threadId}`;
 
   return {
