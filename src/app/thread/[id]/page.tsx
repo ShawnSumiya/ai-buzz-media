@@ -60,7 +60,7 @@ export async function generateMetadata({
 
   const { data: row, error } = await supabase
     .from("promo_threads")
-    .select("id, product_name, og_image_url, transcript")
+    .select("id, product_name, source_url, og_image_url, transcript")
     .eq("id", threadId)
     .single();
 
@@ -68,15 +68,36 @@ export async function generateMetadata({
     return { title: "スレッドが見つかりません | AI Buzz Media" };
   }
 
-  const transcript = normalizeTranscript((row as { transcript?: unknown }).transcript ?? []);
-  const title = String((row as { product_name?: string }).product_name ?? "スレッド");
+  const transcript = normalizeTranscript(
+    (row as { transcript?: unknown }).transcript ?? []
+  );
+  const title = String(
+    (row as { product_name?: string }).product_name ?? "スレッド"
+  );
   const description = getFirstCommentExcerpt(transcript);
   const dbOgImageUrl =
     (row as { og_image_url?: string | null }).og_image_url ?? null;
-  const ogImageUrl =
-    (typeof dbOgImageUrl === "string" && dbOgImageUrl.trim().length > 0)
-      ? dbOgImageUrl
-      : "/icon.png";
+  const sourceUrl =
+    (row as { source_url?: string | null }).source_url ?? null;
+
+  // OGP画像URLの正規化:
+  // 1. 絶対URL (http/https) → そのまま使用
+  // 2. 相対URL + source_url があれば → new URL(relative, source_url)
+  // 3. それ以外 / 取得失敗 → サイト共通のアイコンをフォールバック
+  let ogImageUrl: string = "/icon.png";
+  if (typeof dbOgImageUrl === "string" && dbOgImageUrl.trim().length > 0) {
+    const trimmed = dbOgImageUrl.trim();
+    if (/^https?:\/\//i.test(trimmed)) {
+      ogImageUrl = trimmed;
+    } else if (sourceUrl) {
+      try {
+        ogImageUrl = new URL(trimmed, sourceUrl).toString();
+      } catch {
+        ogImageUrl = "/icon.png";
+      }
+    }
+  }
+
   const url = `${siteUrl}/thread/${threadId}`;
 
   return {
