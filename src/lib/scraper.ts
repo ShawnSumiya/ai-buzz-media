@@ -11,52 +11,48 @@ function isYouTubeUrl(url: string): boolean {
   }
 }
 
-/** YouTube専用: og:title と description を取得して結合した「YouTube動画情報」を返す */
+/** oEmbed APIレスポンスの型 */
+interface YouTubeOEmbedResponse {
+  title?: string;
+  thumbnail_url?: string;
+}
+
+/** YouTube専用: oEmbed APIでメタデータ（タイトル・サムネイル）を取得し、字幕を組み合わせて返す */
 async function scrapeYouTubeMetadata(url: string) {
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8'
-      }
-    });
+    // 1. oEmbed API でタイトルとサムネイルを取得（HTMLパースに頼らない）
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const oembedResponse = await fetch(oembedUrl);
 
-    if (!response.ok) {
-      return { ok: false as const, error: `Status ${response.status}` };
+    if (!oembedResponse.ok) {
+      return { ok: false as const, error: `oEmbed API Status ${oembedResponse.status}` };
     }
 
-    const html = await response.text();
-    const $ = cheerio.load(html);
+    const oembedData = (await oembedResponse.json()) as YouTubeOEmbedResponse;
+    const title = oembedData.title?.replace(/\s+/g, ' ').trim() || '（タイトル取得なし）';
+    const ogImage = oembedData.thumbnail_url || null;
 
-    const title = $('meta[property="og:title"]').attr('content')?.replace(/\s+/g, ' ').trim() || '';
-    const description =
-      $('meta[name="description"]').attr('content')?.replace(/\s+/g, ' ').trim() ||
-      $('meta[property="og:description"]').attr('content')?.replace(/\s+/g, ' ').trim() ||
-      '';
-    const ogImage = $('meta[property="og:image"]').attr('content') || null;
-
-    // 自動字幕を取得（失敗時は空文字でフォールバック）
-    let youtubeTranscript = '';
+    // 2. 字幕（トランスクリプト）の取得 — 独立したtry/catchで囲み、失敗しても全体を止めない
+    let transcriptText = '';
     try {
       const transcriptItems = await YoutubeTranscript.fetchTranscript(url);
       const fullTranscript = transcriptItems.map((item) => item.text).join(' ');
-      youtubeTranscript = fullTranscript.length > 5000
-        ? fullTranscript.substring(0, 5000) + '...'
-        : fullTranscript;
+      transcriptText =
+        fullTranscript.length > 5000 ? fullTranscript.substring(0, 5000) + '...' : fullTranscript;
     } catch (err) {
-      console.warn('YouTube transcript fetch failed (continuing without):', err);
+      console.warn('YouTube transcript fetch failed (continuing without transcript):', err);
     }
 
-    const parts: string[] = [title, description].filter(Boolean);
-    if (youtubeTranscript) {
-      parts.push('【配信の実際の会話（自動抽出）】\n' + youtubeTranscript);
+    // 3. 返り値の構成: title + transcriptText をマージ
+    const parts: string[] = [title];
+    if (transcriptText) {
+      parts.push('【配信の実際の会話（自動抽出）】\n' + transcriptText);
     }
     const combinedText = parts.join('\n\n');
     const text = combinedText || '（タイトル・概要欄を取得できませんでした）';
 
     console.log(
-      `YouTube scrape success! title=${title.length} chars, description=${description.length} chars, transcript=${youtubeTranscript.length} chars`
+      `YouTube scrape success (oEmbed)! title=${title.length} chars, transcript=${transcriptText.length} chars, ogImage=${ogImage ? 'ok' : 'none'}`
     );
 
     return {
@@ -65,8 +61,8 @@ async function scrapeYouTubeMetadata(url: string) {
       ogImage,
       isYouTube: true as const,
       youtubeTitle: title,
-      youtubeDescription: description,
-      youtubeTranscript
+      youtubeDescription: '', // oEmbed APIではdescription非対応のため空
+      youtubeTranscript: transcriptText
     };
   } catch (error) {
     console.error('YouTube scrape Exception:', error);
