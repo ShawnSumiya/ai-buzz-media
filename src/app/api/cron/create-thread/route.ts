@@ -231,6 +231,23 @@ function buildProductInfoForComments(p: ExtractedProduct, url: string): string {
   return lines.join("\n");
 }
 
+/** YouTube動画情報をAIに渡すためのテキストを組み立てる */
+function buildYouTubeProductInfo(
+  title: string,
+  description: string,
+  url: string
+): string {
+  const lines = [
+    "★YouTube動画情報（VTuber配信などのファンスレッド用。動画内で起きた出来事・エピソードに基づいてリアルなリスナー感想を生成すること）★",
+    "",
+    `【動画タイトル】${title}`,
+    description ? `【概要欄】${description}` : null,
+    "",
+    `参照URL: ${url}`,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
 /** 会話生成用：>>1で略称を明示し、その後は略称＋代名詞で自然な会話にすること */
 const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitter)に書き込む本物の人間です。商品スレを見てリアルに反応する。
 
@@ -299,6 +316,26 @@ const CRON_COMMENTS_SYSTEM_INSTRUCTION = `あなたは5ちゃんねるやX(Twitt
 - スレッドの最初（>>1相当）で略称・通称を使わず、何について話すか不明な抽象的なコメントのみを出力した場合、システムエラーとする。
 - NGワード（錬金術、目玉、目玉商品、目玉キャンペーン 等）を含むコメントは**システムエラーとして即座に破棄される**。
 - モデルは絶対にそのようなコメントを出力してはならない。
+
+Output valid JSON only, no markdown code fences or extra text.`;
+
+/** YouTube/VTuber動画用：リスナー感想・ファンスレッド向けのシステムプロンプト */
+const CRON_COMMENTS_SYSTEM_INSTRUCTION_YOUTUBE = `あなたは5ちゃんねるやX(Twitter)に書き込む本物の人間です。YouTube動画（VTuberの配信など）のファンスレッドでリアルに盛り上がる。
+
+【重要】これは商品レビューではなく、YouTube動画（VTuberの配信など）に関するファンスレッドです。提供された動画タイトルや概要欄の内容（エピソードや出来事）をもとに、リスナーが『昨日の配信おもろかった』『あれは草』『〇〇てぇてぇ』といったオタク特有の語彙を使って盛り上がっているリアルな掲示板の会話を生成してください。見た目の設定などを連呼するのではなく、動画の中で起きた出来事に対する反応を重視してください。
+
+【絶対守ること】
+- 敬語禁止。タメ口・ネットスラング必須（「マジか」「これ神」「うわ」「ｗ」「（笑）」「てぇてぇ」「草」など）
+- 短文中心。1文が長くなりすぎるな
+- 適度に誤字、「w」「（笑）」「！」の連打を混ぜてリアリティを出す
+- 動画内の具体的なエピソード・出来事・配信の流れに言及すること
+
+【ペルソナ多様性】
+- 全員ハイテンションだと嘘っぽい。以下を混ぜろ:
+  - 配信をリアタイで見た人
+  - アーカイブで追った人
+  - 特定のシーンに反応してる人
+  - 推しの言動に喜んでる人
 
 Output valid JSON only, no markdown code fences or extra text.`;
 
@@ -518,8 +555,45 @@ export async function GET(req: Request) {
     const scrapedText = scraped.text ?? "";
     const ogImage = "ogImage" in scraped ? scraped.ogImage : undefined;
     const imagePart = await fetchOgImageAsImagePart(ogImage, rawUrl);
+    const isYouTube =
+      "isYouTube" in scraped && scraped.isYouTube === true;
+    const youtubeTitle =
+      "youtubeTitle" in scraped ? String(scraped.youtubeTitle ?? "") : "";
+    const youtubeDescription =
+      "youtubeDescription" in scraped
+        ? String(scraped.youtubeDescription ?? "")
+        : "";
 
-    const extractionPrompt = `
+    let productInfoForComments: string;
+    let commentsSystemInstruction: string;
+    let threadTitle: string;
+    let keyFeaturesLines: string[];
+
+    if (isYouTube) {
+      // YouTube動画: 商品抽出をスキップし、動画情報をそのまま使用
+      productInfoForComments = buildYouTubeProductInfo(
+        youtubeTitle,
+        youtubeDescription,
+        rawUrl
+      );
+      if (topic.context) {
+        productInfoForComments += `\n\n【重要：スレッド構成への追加指示】\n"${topic.context}"`;
+      }
+      commentsSystemInstruction = CRON_COMMENTS_SYSTEM_INSTRUCTION_YOUTUBE;
+      threadTitle =
+        youtubeTitle.trim() || "【実況】YouTube動画の感想スレ";
+      keyFeaturesLines = [
+        "【YouTube動画情報】",
+        `- 動画タイトル: ${youtubeTitle || "（取得できず）"}`,
+        ...(youtubeDescription
+          ? [
+              `- 概要欄: ${youtubeDescription.substring(0, 500)}${youtubeDescription.length > 500 ? "..." : ""}`,
+            ]
+          : []),
+      ];
+    } else {
+      // ECサイト: 既存の商品抽出ロジック
+      const extractionPrompt = `
       以下のWebページのテキストから、最も重要な「商品」または「セール情報」を1つ抽出してください。
       数値（価格、割引率など）はテキストに明記されているもの以外、絶対に創作しないでください。
 
@@ -567,27 +641,44 @@ export async function GET(req: Request) {
       key_specs: String(parsed.key_specs ?? "").trim(),
     };
 
-    // 3: 無限サクラ会話の初期10件を生成
-    // affiliate_text（楽天HTMLタグから抽出した公式説明）があれば最優先で先頭に結合
-    const affiliateText = topic.affiliate_text?.trim() || null;
-    let productInfoForComments = buildProductInfoForComments(extracted, rawUrl);
-    if (affiliateText) {
-      productInfoForComments = `【確定商品情報・楽天公式説明（最優先）】\n${affiliateText}\n\n${productInfoForComments}`;
-    }
-    if (rakutenDetails) {
-      productInfoForComments += `\n\n【公式商品説明】\n${rakutenDetails}`;
-    }
-    if (topic.context) {
-      productInfoForComments += `\n\n【重要：スレッド構成への追加指示】\nこのスレッドの会話の流れや結論について、以下の指示を最優先で守ってください：\n"${topic.context}"\n\n※指示に登場する競合製品名（DysonやPanasonicなど）については、あなたの持つ知識を使って具体的に比較・言及してください。`;
+      // ECサイト用の productInfo / プロンプト / タイトル / keyFeatures を設定
+      const affiliateText = topic.affiliate_text?.trim() || null;
+      productInfoForComments = buildProductInfoForComments(extracted, rawUrl);
+      if (affiliateText) {
+        productInfoForComments = `【確定商品情報・楽天公式説明（最優先）】\n${affiliateText}\n\n${productInfoForComments}`;
+      }
+      if (rakutenDetails) {
+        productInfoForComments += `\n\n【公式商品説明】\n${rakutenDetails}`;
+      }
+      if (topic.context) {
+        productInfoForComments += `\n\n【重要：スレッド構成への追加指示】\nこのスレッドの会話の流れや結論について、以下の指示を最優先で守ってください：\n"${topic.context}"\n\n※指示に登場する競合製品名（DysonやPanasonicなど）については、あなたの持つ知識を使って具体的に比較・言及してください。`;
+      }
+      commentsSystemInstruction = CRON_COMMENTS_SYSTEM_INSTRUCTION;
+      threadTitle = await generateThreadTitle(
+        extracted,
+        topic.context,
+        imagePart,
+        affiliateText
+      );
+      keyFeaturesLines = [
+        `【抽出された目玉情報】`,
+        `- 商品/キャンペーン名: ${extracted.product_name}`,
+        ...(extracted.manufacturer ? [`- メーカー: ${extracted.manufacturer}`] : []),
+        ...(extracted.model_number ? [`- 型番: ${extracted.model_number}`] : []),
+        ...(extracted.price ? [`- 価格: ${extracted.price}`] : []),
+        ...(extracted.key_specs ? [`- 主なスペック: ${extracted.key_specs}`] : []),
+        `- 推しポイント: ${extracted.selling_point}`,
+      ];
     }
 
+    // 3: 無限サクラ会話の初期10件を生成
     const comments: TranscriptTurn[] = [];
     while (comments.length < 10) {
       const batch = await generateStreamComments(
         comments.map((c) => `${c.speaker_name}「${c.content}」`),
         productInfoForComments,
         {
-          systemInstruction: CRON_COMMENTS_SYSTEM_INSTRUCTION,
+          systemInstruction: commentsSystemInstruction,
           imagePart: imagePart ?? undefined,
         }
       );
@@ -607,23 +698,6 @@ export async function GET(req: Request) {
       ...t,
       speaker_name: nameMap.get(t.speaker_name) ?? t.speaker_name,
     }));
-
-    const threadTitle = await generateThreadTitle(
-      extracted,
-      topic.context,
-      imagePart,
-      affiliateText
-    );
-
-    const keyFeaturesLines = [
-      `【抽出された目玉情報】`,
-      `- 商品/キャンペーン名: ${extracted.product_name}`,
-      extracted.manufacturer ? `- メーカー: ${extracted.manufacturer}` : null,
-      extracted.model_number ? `- 型番: ${extracted.model_number}` : null,
-      extracted.price ? `- 価格: ${extracted.price}` : null,
-      extracted.key_specs ? `- 主なスペック: ${extracted.key_specs}` : null,
-      `- 推しポイント: ${extracted.selling_point}`,
-    ].filter(Boolean);
 
     const { data: row, error } = await supabase
       .from("promo_threads")

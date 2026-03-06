@@ -1,8 +1,67 @@
 import * as cheerio from 'cheerio';
 
+/** YouTube URLかどうかを判定する */
+function isYouTubeUrl(url: string): boolean {
+  try {
+    const lower = url.toLowerCase();
+    return lower.includes('youtube.com') || lower.includes('youtu.be');
+  } catch {
+    return false;
+  }
+}
+
+/** YouTube専用: og:title と description を取得して結合した「YouTube動画情報」を返す */
+async function scrapeYouTubeMetadata(url: string) {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8'
+      }
+    });
+
+    if (!response.ok) {
+      return { ok: false as const, error: `Status ${response.status}` };
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const title = $('meta[property="og:title"]').attr('content')?.replace(/\s+/g, ' ').trim() || '';
+    const description =
+      $('meta[name="description"]').attr('content')?.replace(/\s+/g, ' ').trim() ||
+      $('meta[property="og:description"]').attr('content')?.replace(/\s+/g, ' ').trim() ||
+      '';
+    const ogImage = $('meta[property="og:image"]').attr('content') || null;
+
+    const combinedText = [title, description].filter(Boolean).join('\n\n');
+    const text = combinedText || '（タイトル・概要欄を取得できませんでした）';
+
+    console.log(`YouTube scrape success! title=${title.length} chars, description=${description.length} chars`);
+
+    return {
+      ok: true as const,
+      text,
+      ogImage,
+      isYouTube: true as const,
+      youtubeTitle: title,
+      youtubeDescription: description
+    };
+  } catch (error) {
+    console.error('YouTube scrape Exception:', error);
+    return { ok: false as const, error: String(error) };
+  }
+}
+
 export async function scrapePageText(url: string) {
   try {
     console.log(`Checking URL: ${url}`); // ログ追加
+
+    // YouTube URL の場合は専用処理に分岐
+    if (isYouTubeUrl(url)) {
+      return scrapeYouTubeMetadata(url);
+    }
 
     const response = await fetch(url, {
       headers: {
