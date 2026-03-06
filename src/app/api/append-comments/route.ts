@@ -88,10 +88,13 @@ export async function POST(request: NextRequest) {
 
     const updatedTranscript = [...transcript, ...newComments];
 
-    // Step 3: DBに追記
+    // Step 3: DBに追記（transcript と updated_at を更新）
     const { error: updateError } = await supabase
       .from("promo_threads")
-      .update({ transcript: updatedTranscript })
+      .update({
+        transcript: updatedTranscript,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", threadId);
 
     if (updateError) {

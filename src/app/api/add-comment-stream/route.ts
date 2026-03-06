@@ -86,10 +86,13 @@ export async function POST(request: NextRequest) {
 
     const updatedTranscript = [...transcript, ...newComments];
 
-    // DBに保存
+    // DBに保存（transcript と updated_at を更新）
     const { error: updateError } = await supabase
       .from("promo_threads")
-      .update({ transcript: updatedTranscript })
+      .update({
+        transcript: updatedTranscript,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", threadId);
 
     if (updateError) {

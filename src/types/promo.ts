@@ -33,6 +33,8 @@ export interface PromoThread {
   cast_profiles: unknown[];
   transcript: TranscriptTurn[];
   created_at: string;
+  /** 最終更新日時（コメント追加時に更新）。一覧の日付表示・ソートに使用 */
+  updated_at?: string | null;
 }
 
 /** create-hype API のリクエスト */

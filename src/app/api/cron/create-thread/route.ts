@@ -479,7 +479,10 @@ export async function GET(req: Request) {
 
       const { error: updateError } = await supabase
         .from("promo_threads")
-        .update({ transcript: updatedTranscript })
+        .update({
+          transcript: updatedTranscript,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", thread.id);
 
       if (updateError) {

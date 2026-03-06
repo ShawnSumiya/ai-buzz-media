@@ -98,10 +98,13 @@ export async function GET(req: Request) {
 
     const updatedTranscript = [...transcript, ...newComments];
 
-    // 4. DB を更新
+    // 4. DB を更新（transcript と updated_at を更新）
     const { error: updateError } = await supabase
       .from("promo_threads")
-      .update({ transcript: updatedTranscript })
+      .update({
+        transcript: updatedTranscript,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", thread.id);
 
     if (updateError) {
