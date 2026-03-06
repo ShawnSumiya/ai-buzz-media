@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import { YoutubeTranscript } from 'youtube-transcript';
 
 /** YouTube URLかどうかを判定する */
 function isYouTubeUrl(url: string): boolean {
@@ -35,10 +36,28 @@ async function scrapeYouTubeMetadata(url: string) {
       '';
     const ogImage = $('meta[property="og:image"]').attr('content') || null;
 
-    const combinedText = [title, description].filter(Boolean).join('\n\n');
+    // 自動字幕を取得（失敗時は空文字でフォールバック）
+    let youtubeTranscript = '';
+    try {
+      const transcriptItems = await YoutubeTranscript.fetchTranscript(url);
+      const fullTranscript = transcriptItems.map((item) => item.text).join(' ');
+      youtubeTranscript = fullTranscript.length > 5000
+        ? fullTranscript.substring(0, 5000) + '...'
+        : fullTranscript;
+    } catch (err) {
+      console.warn('YouTube transcript fetch failed (continuing without):', err);
+    }
+
+    const parts: string[] = [title, description].filter(Boolean);
+    if (youtubeTranscript) {
+      parts.push('【配信の実際の会話（自動抽出）】\n' + youtubeTranscript);
+    }
+    const combinedText = parts.join('\n\n');
     const text = combinedText || '（タイトル・概要欄を取得できませんでした）';
 
-    console.log(`YouTube scrape success! title=${title.length} chars, description=${description.length} chars`);
+    console.log(
+      `YouTube scrape success! title=${title.length} chars, description=${description.length} chars, transcript=${youtubeTranscript.length} chars`
+    );
 
     return {
       ok: true as const,
@@ -46,7 +65,8 @@ async function scrapeYouTubeMetadata(url: string) {
       ogImage,
       isYouTube: true as const,
       youtubeTitle: title,
-      youtubeDescription: description
+      youtubeDescription: description,
+      youtubeTranscript
     };
   } catch (error) {
     console.error('YouTube scrape Exception:', error);

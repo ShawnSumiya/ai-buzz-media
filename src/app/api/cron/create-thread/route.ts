@@ -235,13 +235,17 @@ function buildProductInfoForComments(p: ExtractedProduct, url: string): string {
 function buildYouTubeProductInfo(
   title: string,
   description: string,
-  url: string
+  url: string,
+  transcript?: string
 ): string {
   const lines = [
     "★YouTube動画情報（VTuber配信などのファンスレッド用。動画内で起きた出来事・エピソードに基づいてリアルなリスナー感想を生成すること）★",
     "",
     `【動画タイトル】${title}`,
     description ? `【概要欄】${description}` : null,
+    transcript
+      ? ["", "【配信の実際の会話（自動抽出）】", transcript].join("\n")
+      : null,
     "",
     `参照URL: ${url}`,
   ].filter(Boolean);
@@ -566,6 +570,10 @@ export async function GET(req: Request) {
       "youtubeDescription" in scraped
         ? String(scraped.youtubeDescription ?? "")
         : "";
+    const youtubeTranscript =
+      "youtubeTranscript" in scraped
+        ? String(scraped.youtubeTranscript ?? "")
+        : "";
 
     let productInfoForComments: string;
     let commentsSystemInstruction: string;
@@ -577,7 +585,8 @@ export async function GET(req: Request) {
       productInfoForComments = buildYouTubeProductInfo(
         youtubeTitle,
         youtubeDescription,
-        rawUrl
+        rawUrl,
+        youtubeTranscript || undefined
       );
       if (topic.context) {
         productInfoForComments += `\n\n【重要：スレッド構成への追加指示】\n"${topic.context}"`;
