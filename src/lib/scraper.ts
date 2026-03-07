@@ -40,6 +40,7 @@ async function scrapeYouTubeMetadata(url: string) {
       transcriptText =
         fullTranscript.length > 5000 ? fullTranscript.substring(0, 5000) + '...' : fullTranscript;
     } catch (err) {
+      console.error('Transcript fetch error:', err);
       console.warn('YouTube transcript fetch failed (continuing without transcript):', err);
     }
 
