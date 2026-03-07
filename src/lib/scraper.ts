@@ -1,5 +1,74 @@
 import * as cheerio from 'cheerio';
-import { YoutubeTranscript } from 'youtube-transcript';
+
+const TRANSCRIPT_MAX_CHARS = 5000;
+
+/**
+ * RapidAPI YouTube Transcript API で字幕テキストを取得する。
+ * Vercelからの直接アクセスがブロックされる問題を回避するためRapidAPIを使用。
+ * エラー時や字幕なしの場合は空文字列を返す。
+ */
+async function fetchYouTubeTranscriptViaRapidAPI(url: string): Promise<string> {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey) {
+    console.warn('RAPIDAPI_KEY is not set, skipping transcript fetch');
+    return '';
+  }
+
+  try {
+    const apiUrl = `https://youtube-transcript3.p.rapidapi.com/api/transcript-with-url?url=${encodeURIComponent(url)}&flat_text=true&lang=ja`;
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'x-rapidapi-host': 'youtube-transcript3.p.rapidapi.com',
+        'x-rapidapi-key': apiKey
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`RapidAPI transcript fetch failed: ${response.status} ${response.statusText}`);
+      return '';
+    }
+
+    const json = (await response.json()) as unknown;
+    let text = '';
+
+    // APIレスポンスからテキストを柔軟に抽出（仕様変更に対応）
+    if (typeof json === 'string') {
+      text = json;
+    } else if (json && typeof json === 'object') {
+      const obj = json as Record<string, unknown>;
+      if (typeof obj.text === 'string') {
+        text = obj.text;
+      } else if (typeof obj.flat_text === 'string') {
+        text = obj.flat_text;
+      } else if (Array.isArray(obj.transcript)) {
+        text = obj.transcript
+          .map((item: { text?: string }) => (item?.text ?? ''))
+          .join(' ')
+          .trim();
+      } else if (Array.isArray(obj.transcript_text)) {
+        text = obj.transcript_text.join(' ').trim();
+      } else if (obj.data && typeof (obj.data as { text?: string }).text === 'string') {
+        text = (obj.data as { text: string }).text;
+      } else {
+        // 想定外の構造の場合はデバッグ用にログ出力
+        console.log('RapidAPI transcript response structure:', JSON.stringify(json).slice(0, 500));
+      }
+    }
+
+    if (!text || typeof text !== 'string') {
+      return '';
+    }
+
+    const trimmed = text.replace(/\s+/g, ' ').trim();
+    return trimmed.length > TRANSCRIPT_MAX_CHARS
+      ? trimmed.substring(0, TRANSCRIPT_MAX_CHARS) + '...'
+      : trimmed;
+  } catch (err) {
+    console.error('Transcript fetch error:', err);
+    return '';
+  }
+}
 
 /** YouTube URLかどうかを判定する */
 function isYouTubeUrl(url: string): boolean {
@@ -32,17 +101,8 @@ async function scrapeYouTubeMetadata(url: string) {
     const title = oembedData.title?.replace(/\s+/g, ' ').trim() || '（タイトル取得なし）';
     const ogImage = oembedData.thumbnail_url || null;
 
-    // 2. 字幕（トランスクリプト）の取得 — 独立したtry/catchで囲み、失敗しても全体を止めない
-    let transcriptText = '';
-    try {
-      const transcriptItems = await YoutubeTranscript.fetchTranscript(url);
-      const fullTranscript = transcriptItems.map((item) => item.text).join(' ');
-      transcriptText =
-        fullTranscript.length > 5000 ? fullTranscript.substring(0, 5000) + '...' : fullTranscript;
-    } catch (err) {
-      console.error('Transcript fetch error:', err);
-      console.warn('YouTube transcript fetch failed (continuing without transcript):', err);
-    }
+    // 2. 字幕（トランスクリプト）の取得 — RapidAPI経由、失敗しても全体を止めない
+    const transcriptText = await fetchYouTubeTranscriptViaRapidAPI(url);
 
     // 3. 返り値の構成: title + transcriptText をマージ
     const parts: string[] = [title];
