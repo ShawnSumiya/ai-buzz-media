@@ -46,7 +46,7 @@ export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
       .from("promo_threads")
-      .select("id, product_name, source_url, affiliate_url, key_features, og_image_url, cast_profiles, transcript, created_at, updated_at")
+      .select("id, product_name, source_url, affiliate_url, key_features, og_image_url, cast_profiles, transcript, created_at, updated_at, is_closed")
       .order("updated_at", { ascending: false })
       .limit(50);
 

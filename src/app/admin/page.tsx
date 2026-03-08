@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Link2, FileText, Loader2, Settings2, ExternalLink, Trash2, RotateCcw } from "lucide-react";
+import { Sparkles, Link2, FileText, Loader2, Settings2, ExternalLink, Trash2, RotateCcw, Archive, ArchiveRestore } from "lucide-react";
 import type { PromoThread } from "@/types/promo";
 
 type TopicQueueItem = {
@@ -18,18 +18,32 @@ type TopicQueueItem = {
 function AdminThreadRow({
   thread,
   onDelete,
+  onClose,
+  onReopen,
   isDeleting,
+  isUpdating,
 }: {
   thread: PromoThread;
   onDelete: (id: string) => void;
+  onClose: (id: string) => void;
+  onReopen: (id: string) => void;
   isDeleting: boolean;
+  isUpdating: boolean;
 }) {
   const router = useRouter();
+  const closed = thread.is_closed === true;
 
   return (
     <li className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
       <div className="min-w-0 flex-1">
-        <h3 className="truncate font-medium text-slate-900">{thread.product_name}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="truncate font-medium text-slate-900">{thread.product_name}</h3>
+          {closed && (
+            <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+              終了済み
+            </span>
+          )}
+        </div>
         <p className="text-xs text-slate-500">
           {thread.created_at
             ? new Date(thread.created_at).toLocaleString("ja-JP")
@@ -37,6 +51,35 @@ function AdminThreadRow({
         </p>
       </div>
       <div className="flex items-center gap-2">
+        {closed ? (
+          <button
+            type="button"
+            onClick={() => onReopen(thread.id)}
+            disabled={isUpdating}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 px-3 py-1.5 text-sm text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
+          >
+            {isUpdating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ArchiveRestore className="h-3.5 w-3.5" />
+            )}
+            再開する
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onClose(thread.id)}
+            disabled={isUpdating}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+          >
+            {isUpdating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Archive className="h-3.5 w-3.5" />
+            )}
+            スレを終了する（過去ログ化）
+          </button>
+        )}
         <button
           type="button"
           onClick={() => router.push(`/thread/${thread.id}`)}
@@ -81,6 +124,7 @@ export default function AdminPage() {
   const [isFetchingTitle, setIsFetchingTitle] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
+  const [closingThreadId, setClosingThreadId] = useState<string | null>(null);
   const [requeueingId, setRequeueingId] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -254,6 +298,49 @@ export default function AdminPage() {
       setError(e instanceof Error ? e.message : "削除に失敗しました");
     } finally {
       setDeletingThreadId(null);
+    }
+  }
+
+  async function handleCloseThread(id: string) {
+    if (!window.confirm("このスレッドを終了（過去ログ化）しますか？\n終了後は自動コメントが追加されなくなります。")) return;
+    setClosingThreadId(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/promo-threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_closed: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "終了の更新に失敗しました");
+      setThreads((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, is_closed: true } : t))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "終了の更新に失敗しました");
+    } finally {
+      setClosingThreadId(null);
+    }
+  }
+
+  async function handleReopenThread(id: string) {
+    setClosingThreadId(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/promo-threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_closed: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "再開の更新に失敗しました");
+      setThreads((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, is_closed: false } : t))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "再開の更新に失敗しました");
+    } finally {
+      setClosingThreadId(null);
     }
   }
 
@@ -515,9 +602,14 @@ export default function AdminPage() {
                             {item.url}
                           </a>
                           {item.context && (
-                            <span className="inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                              {item.context}
-                            </span>
+                            <div
+                              className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
+                              title={item.context}
+                            >
+                              {item.context.length > 50
+                                ? `${item.context.substring(0, 50)}...`
+                                : item.context}
+                            </div>
                           )}
                         </div>
                       </td>
@@ -596,7 +688,10 @@ export default function AdminPage() {
                   key={t.id}
                   thread={t}
                   onDelete={handleDeleteThread}
+                  onClose={handleCloseThread}
+                  onReopen={handleReopenThread}
                   isDeleting={deletingThreadId === t.id}
+                  isUpdating={closingThreadId === t.id}
                 />
               ))}
             </ul>

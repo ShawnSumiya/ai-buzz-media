@@ -135,7 +135,7 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
   const { data: row, error } = await supabase
     .from("promo_threads")
     .select(
-      "id, product_name, source_url, affiliate_url, key_features, og_image_url, transcript, created_at"
+      "id, product_name, source_url, affiliate_url, key_features, og_image_url, transcript, created_at, is_closed"
     )
     .eq("id", threadId)
     .single();
@@ -225,6 +225,11 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
             transcript={thread.transcript ?? []}
             productName={thread.product_name}
           />
+          {thread.is_closed === true && (
+            <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-medium text-amber-800">
+              このスレッドは過去ログ倉庫に格納されています。
+            </div>
+          )}
         </section>
 
         <div className="mt-10 flex justify-center">

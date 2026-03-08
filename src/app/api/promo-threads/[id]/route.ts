@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import type { TranscriptTurn } from "@/types/promo";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 function normalizeTranscript(raw: unknown): TranscriptTurn[] {
   if (!Array.isArray(raw)) return [];
@@ -64,6 +69,51 @@ export async function GET(
     console.error("promo-threads GET [id] error:", e);
     return NextResponse.json(
       { error: "スレッドの取得に失敗しました" },
+      { status: 500 }
+    );
+  }
+}
+
+/** is_closed を更新（終了/再開） */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ error: "id が必要です" }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const isClosed = body?.is_closed;
+    if (typeof isClosed !== "boolean") {
+      return NextResponse.json(
+        { error: "is_closed (boolean) が必要です" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabase
+      .from("promo_threads")
+      .update({ is_closed: isClosed })
+      .eq("id", id)
+      .select("id, is_closed")
+      .single();
+
+    if (error) {
+      console.error("promo-threads PATCH error:", error);
+      return NextResponse.json(
+        { error: "更新に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(data);
+  } catch (e) {
+    console.error("promo-threads PATCH error:", e);
+    return NextResponse.json(
+      { error: "更新に失敗しました" },
       { status: 500 }
     );
   }

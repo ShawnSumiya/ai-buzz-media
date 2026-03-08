@@ -53,10 +53,11 @@ export async function GET(req: Request) {
   // --- セキュリティチェック終了 ---
 
   try {
-    // 1. promo_threads から created_at が一番新しいスレッドを1件取得
+    // 1. promo_threads から created_at が一番新しいスレッドを1件取得（終了済みは除外）
     const { data: rows, error: fetchError } = await supabase
       .from("promo_threads")
       .select("id, product_name, key_features, transcript, created_at")
+      .or("is_closed.eq.false,is_closed.is.null")
       .order("created_at", { ascending: false })
       .limit(1);
 

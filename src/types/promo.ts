@@ -35,6 +35,8 @@ export interface PromoThread {
   created_at: string;
   /** 最終更新日時（コメント追加時に更新）。一覧の日付表示・ソートに使用 */
   updated_at?: string | null;
+  /** 終了済み（過去ログ化）の場合 true。true のスレには自動コメントが追加されない */
+  is_closed?: boolean | null;
 }
 
 /** create-hype API のリクエスト */
