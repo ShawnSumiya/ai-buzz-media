@@ -425,10 +425,10 @@ export async function GET(req: Request) {
   // --- セキュリティチェック終了 ---
 
   try {
-    // 1. topic_queue から pending の一番古いものを1件取得（affiliate_url, affiliate_text も取得）
+    // 1. topic_queue から pending の一番古いものを1件取得（affiliate_url, affiliate_text, image_url も取得）
     const { data: queued, error: queueError } = await supabase
       .from("topic_queue")
-      .select("id, url, affiliate_url, affiliate_text, context, status, created_at")
+      .select("id, url, affiliate_url, affiliate_text, context, image_url, status, created_at")
       .eq("status", "pending")
       .order("created_at", { ascending: true })
       .limit(1);
@@ -528,6 +528,7 @@ export async function GET(req: Request) {
       affiliate_url?: string | null;
       affiliate_text?: string | null;
       context?: string | null;
+      image_url?: string | null;
       status: string;
       created_at: string;
     };
@@ -575,7 +576,10 @@ export async function GET(req: Request) {
     }
 
     const scrapedText = scraped.text ?? "";
-    const ogImage = "ogImage" in scraped ? scraped.ogImage : undefined;
+    // キューに手動で image_url が指定されていればそれを優先、なければ scrape の og:image を使用
+    const ogImage =
+      topic.image_url?.trim() ||
+      ("ogImage" in scraped ? scraped.ogImage : undefined);
     const imagePart = await fetchOgImageAsImagePart(ogImage, rawUrl);
     const isYouTube =
       "isYouTube" in scraped && scraped.isYouTube === true;

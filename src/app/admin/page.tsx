@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Link2, FileText, Loader2, Settings2, ExternalLink, Trash2, RotateCcw, Archive, ArchiveRestore } from "lucide-react";
+import { Sparkles, Link2, FileText, Loader2, Settings2, ExternalLink, Trash2, RotateCcw, Archive, ArchiveRestore, Image } from "lucide-react";
 import type { PromoThread } from "@/types/promo";
 
 type TopicQueueItem = {
@@ -20,15 +20,19 @@ function AdminThreadRow({
   onDelete,
   onClose,
   onReopen,
+  onEditImage,
   isDeleting,
   isUpdating,
+  isUpdatingImage,
 }: {
   thread: PromoThread;
   onDelete: (id: string) => void;
   onClose: (id: string) => void;
   onReopen: (id: string) => void;
+  onEditImage: (thread: PromoThread) => void;
   isDeleting: boolean;
   isUpdating: boolean;
+  isUpdatingImage: boolean;
 }) {
   const router = useRouter();
   const closed = thread.is_closed === true;
@@ -51,6 +55,20 @@ function AdminThreadRow({
         </p>
       </div>
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onEditImage(thread)}
+          disabled={isUpdatingImage}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+          title="サムネイル画像を編集"
+        >
+          {isUpdatingImage ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Image className="h-3.5 w-3.5" />
+          )}
+          画像
+        </button>
         {closed ? (
           <button
             type="button"
@@ -114,6 +132,7 @@ export default function AdminPage() {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [affiliateUrl, setAffiliateUrl] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [context, setContext] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [scrapeFailedMessage, setScrapeFailedMessage] = useState<string | null>(null);
@@ -127,6 +146,9 @@ export default function AdminPage() {
   const [closingThreadId, setClosingThreadId] = useState<string | null>(null);
   const [requeueingId, setRequeueingId] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [editingImageThread, setEditingImageThread] = useState<PromoThread | null>(null);
+  const [editingImageUrl, setEditingImageUrl] = useState("");
+  const [updatingImageId, setUpdatingImageId] = useState<string | null>(null);
 
   const fetchThreads = useCallback(async () => {
     try {
@@ -187,6 +209,7 @@ export default function AdminPage() {
           title: title.trim(),
           url: url.trim(),
           affiliate_url: affiliateUrl.trim() || undefined,
+          image_url: imageUrl.trim() || undefined,
           context: context.trim() || undefined,
         }),
       });
@@ -197,6 +220,7 @@ export default function AdminPage() {
       setTitle("");
       setUrl("");
       setAffiliateUrl("");
+      setImageUrl("");
       setContext("");
       setFallbackText("");
       setFallbackMode(false);
@@ -344,6 +368,39 @@ export default function AdminPage() {
     }
   }
 
+  function handleOpenEditImage(thread: PromoThread) {
+    setEditingImageThread(thread);
+    setEditingImageUrl(thread.og_image_url ?? "");
+  }
+
+  async function handleSaveImageUrl() {
+    if (!editingImageThread) return;
+    setUpdatingImageId(editingImageThread.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/promo-threads/${editingImageThread.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ og_image_url: editingImageUrl.trim() || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "サムネイル画像の更新に失敗しました");
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.id === editingImageThread.id
+            ? { ...t, og_image_url: editingImageUrl.trim() || null }
+            : t
+        )
+      );
+      setEditingImageThread(null);
+      setEditingImageUrl("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "サムネイル画像の更新に失敗しました");
+    } finally {
+      setUpdatingImageId(null);
+    }
+  }
+
   function getStatusBadgeClass(status: string) {
     switch (status) {
       case "done":
@@ -372,6 +429,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           url: url.trim() || undefined,
           text_content: fallbackText.trim(),
+          og_image_url: imageUrl.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -470,6 +528,22 @@ export default function AdminPage() {
               />
               <p className="mt-1 text-xs text-slate-500">
                 未入力の場合は商品ページURLがボタンリンクに使われます。
+              </p>
+            </div>
+            <div>
+              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <Image className="h-4 w-4" />
+                サムネイル画像URL（任意）
+              </label>
+              <input
+                type="url"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="https://example.com/image.jpg（自動取得できない場合に手動で指定）"
+                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                未入力時はページのOGP画像を自動取得します。取得失敗時はここで任意のURLを指定できます。
               </p>
             </div>
             <div>
@@ -684,19 +758,73 @@ export default function AdminPage() {
           ) : (
             <ul className="space-y-2">
               {threads.map((t) => (
-                <AdminThreadRow
-                  key={t.id}
-                  thread={t}
-                  onDelete={handleDeleteThread}
-                  onClose={handleCloseThread}
-                  onReopen={handleReopenThread}
-                  isDeleting={deletingThreadId === t.id}
-                  isUpdating={closingThreadId === t.id}
-                />
+              <AdminThreadRow
+                key={t.id}
+                thread={t}
+                onDelete={handleDeleteThread}
+                onClose={handleCloseThread}
+                onReopen={handleReopenThread}
+                onEditImage={handleOpenEditImage}
+                isDeleting={deletingThreadId === t.id}
+                isUpdating={closingThreadId === t.id}
+                isUpdatingImage={updatingImageId === t.id}
+              />
               ))}
             </ul>
           )}
         </section>
+
+        {editingImageThread && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-image-title"
+          >
+            <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+              <h3 id="edit-image-title" className="mb-4 text-lg font-semibold text-slate-900">
+                サムネイル画像URLの編集
+              </h3>
+              <p className="mb-2 text-sm text-slate-600">
+                {editingImageThread.product_name}
+              </p>
+              <input
+                type="url"
+                value={editingImageUrl}
+                onChange={(e) => setEditingImageUrl(e.target.value)}
+                placeholder="https://example.com/image.jpg"
+                className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingImageThread(null);
+                    setEditingImageUrl("");
+                  }}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveImageUrl}
+                  disabled={updatingImageId !== null}
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
+                >
+                  {updatingImageId ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      保存中...
+                    </>
+                  ) : (
+                    "保存"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

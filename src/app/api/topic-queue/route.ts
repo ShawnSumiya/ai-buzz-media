@@ -49,6 +49,8 @@ export async function POST(request: NextRequest) {
       typeof body?.affiliate_url === "string" ? body.affiliate_url.trim() : null;
     const context =
       typeof body?.context === "string" ? body.context.trim() || null : null;
+    const imageUrl =
+      typeof body?.image_url === "string" ? body.image_url.trim() || null : null;
 
     if (!rawInput) {
       return NextResponse.json(
@@ -86,9 +88,10 @@ export async function POST(request: NextRequest) {
         affiliate_url: affiliateUrl || null,
         affiliate_text: affiliateTextToStore,
         context,
+        image_url: imageUrl || null,
         status: "pending",
       })
-      .select("id, url, title, affiliate_url, affiliate_text, context, status, created_at")
+      .select("id, url, title, affiliate_url, affiliate_text, context, image_url, status, created_at")
       .single();
 
     if (error) {
@@ -119,7 +122,7 @@ export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
       .from("topic_queue")
-      .select("id, url, title, affiliate_url, affiliate_text, context, status, created_at")
+      .select("id, url, title, affiliate_url, affiliate_text, context, image_url, status, created_at")
       .order("created_at", { ascending: true })
       .limit(100);
 
@@ -169,7 +172,7 @@ export async function PATCH(request: NextRequest) {
       .from("topic_queue")
       .update({ status })
       .eq("id", id)
-      .select("id, url, title, affiliate_url, affiliate_text, context, status, created_at")
+      .select("id, url, title, affiliate_url, affiliate_text, context, image_url, status, created_at")
       .single();
 
     if (error) {

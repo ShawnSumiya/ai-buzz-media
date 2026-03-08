@@ -74,7 +74,7 @@ export async function GET(
   }
 }
 
-/** is_closed を更新（終了/再開） */
+/** is_closed および og_image_url を更新（終了/再開・サムネイル画像URL） */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -86,19 +86,31 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const isClosed = body?.is_closed;
-    if (typeof isClosed !== "boolean") {
+    const isClosed =
+      body?.is_closed !== undefined ? body.is_closed : undefined;
+    const ogImageUrl =
+      body?.og_image_url !== undefined
+        ? (typeof body.og_image_url === "string"
+            ? body.og_image_url.trim() || null
+            : null)
+        : undefined;
+
+    if (isClosed === undefined && ogImageUrl === undefined) {
       return NextResponse.json(
-        { error: "is_closed (boolean) が必要です" },
+        { error: "is_closed または og_image_url のいずれかを指定してください" },
         { status: 400 }
       );
     }
 
+    const updatePayload: Record<string, unknown> = {};
+    if (typeof isClosed === "boolean") updatePayload.is_closed = isClosed;
+    if (ogImageUrl !== undefined) updatePayload.og_image_url = ogImageUrl;
+
     const { data, error } = await supabase
       .from("promo_threads")
-      .update({ is_closed: isClosed })
+      .update(updatePayload)
       .eq("id", id)
-      .select("id, is_closed")
+      .select("id, is_closed, og_image_url")
       .single();
 
     if (error) {

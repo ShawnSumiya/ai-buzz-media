@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const url = typeof body?.url === "string" ? body.url.trim() : undefined;
     const textContent = typeof body?.text_content === "string" ? body.text_content.trim() : undefined;
+    const ogImageUrl = typeof body?.og_image_url === "string" ? body.og_image_url.trim() || null : null;
 
     let inputText = textContent ?? "";
     if (!inputText && url) {
@@ -152,10 +153,11 @@ export async function POST(request: NextRequest) {
         product_name: step1.product_name,
         source_url: sourceUrl,
         key_features: step1.key_features,
+        og_image_url: ogImageUrl,
         cast_profiles: step1.cast_profiles,
         transcript,
       })
-      .select("id, product_name, source_url, key_features, cast_profiles, transcript, created_at")
+      .select("id, product_name, source_url, key_features, og_image_url, cast_profiles, transcript, created_at")
       .single();
 
     if (error) {
