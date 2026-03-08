@@ -15,7 +15,7 @@ async function fetchYouTubeTranscriptViaRapidAPI(url: string): Promise<string> {
   }
 
   try {
-    const apiUrl = `https://youtube-transcript3.p.rapidapi.com/api/transcript-with-url?url=${encodeURIComponent(url)}&flat_text=true&lang=ja`;
+    const apiUrl = `https://youtube-transcript3.p.rapidapi.com/api/transcript-with-url?url=${encodeURIComponent(url)}&flat_text=true`;
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
