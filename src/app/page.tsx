@@ -5,6 +5,9 @@ import Link from "next/link";
 import { Zap, ExternalLink, Loader2, MessageCircle, Flame } from "lucide-react";
 import type { PromoThread, TranscriptTurn } from "@/types/promo";
 
+/** 盛り上がり中バッジを表示するコメント数の閾値 */
+const TRENDING_COMMENT_THRESHOLD = 100;
+
 function PromoCard({ thread }: { thread: PromoThread }) {
   const firstTurn: TranscriptTurn | undefined =
     thread.transcript && thread.transcript.length > 0
@@ -37,10 +40,13 @@ function PromoCard({ thread }: { thread: PromoThread }) {
               {thread.product_name}
             </h2>
           </div>
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700">
-            <Flame className="h-3.5 w-3.5" />
-            🔥 盛り上がり中
-          </div>
+          {!thread.is_closed &&
+            (thread.transcript?.length ?? 0) >= TRENDING_COMMENT_THRESHOLD && (
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700">
+                <Flame className="h-3.5 w-3.5" />
+                🔥 盛り上がり中
+              </div>
+            )}
         </div>
 
         <div className="space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
