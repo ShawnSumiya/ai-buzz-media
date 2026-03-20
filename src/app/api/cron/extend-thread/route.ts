@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { generateAppendComments } from "@/lib/gemini";
 import type { TranscriptTurn } from "@/types/promo";
 
+export const dynamic = "force-dynamic";
 export const maxDuration = 300; // スレ伸ばしのAI処理が長いため延長（Vercel Pro プラン）
 
 /** レガシー形式を新形式に変換（append-comments API と同等のロジック） */
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
     const { data: rows, error: fetchError } = await supabase
       .from("promo_threads")
       .select("id, product_name, key_features, transcript, created_at")
-      .or("is_closed.eq.false,is_closed.is.null")
+      .not("is_closed", "eq", true)
       .order("created_at", { ascending: false })
       .limit(1);
 
