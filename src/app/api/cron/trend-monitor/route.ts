@@ -70,7 +70,7 @@ function removeNoise(text: string): string {
 }
 
 /** ツイートブロック内から x.com / twitter.com のポストURLを抽出（/status/ を優先） */
-function extractPostUrl($: cheerio.CheerioAPI, $block: cheerio.Cheerio<cheerio.Element>): string | null {
+function extractPostUrl($: cheerio.CheerioAPI, $block: cheerio.Cheerio<any>): string | null {
   const links = $block.find('a[href*="x.com"], a[href*="twitter.com"]');
   let fallback: string | null = null;
   for (let i = 0; i < links.length; i++) {
