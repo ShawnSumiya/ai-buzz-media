@@ -51,6 +51,10 @@ export async function POST(request: NextRequest) {
       typeof body?.context === "string" ? body.context.trim() || null : null;
     const imageUrl =
       typeof body?.image_url === "string" ? body.image_url.trim() || null : null;
+    const rawSourceType =
+      typeof body?.source_type === "string" ? body.source_type.trim().toLowerCase() : "";
+    const sourceType =
+      rawSourceType === "trend" ? "trend" : "youtube";
 
     if (!rawInput) {
       return NextResponse.json(
@@ -89,9 +93,10 @@ export async function POST(request: NextRequest) {
         affiliate_text: affiliateTextToStore,
         context,
         image_url: imageUrl || null,
+        source_type: sourceType,
         status: "pending",
       })
-      .select("id, url, title, affiliate_url, affiliate_text, context, image_url, status, created_at")
+      .select("id, url, title, affiliate_url, affiliate_text, context, image_url, source_type, status, created_at")
       .single();
 
     if (error) {
@@ -122,7 +127,7 @@ export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
       .from("topic_queue")
-      .select("id, url, title, affiliate_url, affiliate_text, context, image_url, status, created_at")
+      .select("id, url, title, affiliate_url, affiliate_text, context, image_url, source_type, status, created_at")
       .order("created_at", { ascending: true })
       .limit(100);
 
@@ -172,7 +177,7 @@ export async function PATCH(request: NextRequest) {
       .from("topic_queue")
       .update({ status })
       .eq("id", id)
-      .select("id, url, title, affiliate_url, affiliate_text, context, image_url, status, created_at")
+      .select("id, url, title, affiliate_url, affiliate_text, context, image_url, source_type, status, created_at")
       .single();
 
     if (error) {

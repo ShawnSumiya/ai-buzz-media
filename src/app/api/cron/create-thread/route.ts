@@ -358,6 +358,26 @@ const CRON_COMMENTS_SYSTEM_INSTRUCTION_YOUTUBE = `あなたは5ちゃんねる�
 
 Output valid JSON only, no markdown code fences or extra text.`;
 
+/** トレンド・商品特化型（source_type === 'trend'）用: アフィリエイト誘導向けリアル口コミ風スレッド */
+const CRON_COMMENTS_SYSTEM_INSTRUCTION_TREND = `あなたはトレンド商品やテレビ番組について語る、熱狂的な匿名掲示板のまとめサイト作成AIです。
+ユーザーから提供されたコンテキスト（実況コメントや番組情報）を元に、視聴者や主婦層がその商品について「絶対買う」「美味すぎワロタ」「楽天鯖落ちしてるｗ」などと極めてリアルに盛り上がっているスレッドを生成してください。
+読者の購買意欲を強烈にそそる、アフィリエイト誘導に最適なリアルな口コミ風のレスを大量に含めてください。
+
+【絶対守ること】
+- 敬語禁止。タメ口・ネットスラング必須（「マジか」「これ神」「うわ」「ｗ」「（笑）」「絶対買う」「美味すぎ」など）
+- 短文中心。1文が長くなりすぎるな
+- 適度に誤字、「w」「（笑）」「！」の連打を混ぜてリアリティを出す
+- 提供された【コンテキスト】や商品情報を元に、具体的な商品名・特徴に触れたリアルな口コミ風コメントを生成すること
+
+【ペルソナ多様性】
+- 主婦層、視聴者、購入検討中、既に購入した人など、多様な立場のリアクションを混ぜる
+- 全員ハイテンションだと嘘っぽい。冷静派や様子見派も適度に混ぜつつ、最後は購買意欲をそそる方向に
+
+【出力形式】
+- 既存の商品スレッドと同一のJSON形式で出力すること（comments 配列: speaker_name, speaker_attribute, content）
+
+Output valid JSON only, no markdown code fences or extra text.`;
+
 function generateUniqueUserNames(count: number): string[] {
   const jpAdjectives = [
     "眠い", "腹ペコ", "限界", "謎の", "通りすがりの", "深夜の", "無職の", "匿名の",
@@ -425,10 +445,10 @@ export async function GET(req: Request) {
   // --- セキュリティチェック終了 ---
 
   try {
-    // 1. topic_queue から pending の一番古いものを1件取得（affiliate_url, affiliate_text, image_url も取得）
+    // 1. topic_queue から pending の一番古いものを1件取得（source_type, affiliate_url, affiliate_text, image_url も取得）
     const { data: queued, error: queueError } = await supabase
       .from("topic_queue")
-      .select("id, url, affiliate_url, affiliate_text, context, image_url, status, created_at")
+      .select("id, url, affiliate_url, affiliate_text, context, image_url, source_type, status, created_at")
       .eq("status", "pending")
       .order("created_at", { ascending: true })
       .limit(1);
@@ -529,9 +549,11 @@ export async function GET(req: Request) {
       affiliate_text?: string | null;
       context?: string | null;
       image_url?: string | null;
+      source_type?: string | null;
       status: string;
       created_at: string;
     };
+    const sourceType = (topic.source_type ?? "youtube").toLowerCase().trim();
     const rawUrl = topic.url?.trim();
     // 記事内ボタン用: アフィリエイトURLがあればそれ、なければ商品ページURL
     const buttonUrl =
@@ -551,9 +573,10 @@ export async function GET(req: Request) {
     }
 
     // 2. 既存 auto-generate-thread と同様のロジックでスレッド生成
+    // source_type === 'trend' の場合は YouTube 文字起こしを完全にスキップ
     // 楽天商品の場合はURLから公式商品説明を取得（itemCode完全一致検索）
     const [scraped, rakutenDetails] = await Promise.all([
-      scrapePageText(rawUrl),
+      scrapePageText(rawUrl, { skipTranscript: sourceType === "trend" }),
       getRakutenItemDetails(rawUrl),
     ]);
     if (!scraped.ok) {
@@ -601,6 +624,7 @@ export async function GET(req: Request) {
 
     if (isYouTube) {
       // YouTube動画: 商品抽出をスキップし、動画情報をそのまま使用
+      // source_type === 'trend' の場合は youtubeTranscript は空（スキップ済み）
       productInfoForComments = buildYouTubeProductInfo(
         youtubeTitle,
         youtubeDescription,
@@ -608,9 +632,16 @@ export async function GET(req: Request) {
         youtubeTranscript || undefined
       );
       if (topic.context) {
-        productInfoForComments += `\n\n【重要：スレッド構成への追加指示】\n"${topic.context}"`;
+        const contextLabel =
+          sourceType === "trend"
+            ? "【重要：実況コメント・番組情報（スレッド生成の核）】"
+            : "【重要：スレッド構成への追加指示】";
+        productInfoForComments += `\n\n${contextLabel}\n"${topic.context}"`;
       }
-      commentsSystemInstruction = CRON_COMMENTS_SYSTEM_INSTRUCTION_YOUTUBE;
+      commentsSystemInstruction =
+        sourceType === "trend"
+          ? CRON_COMMENTS_SYSTEM_INSTRUCTION_TREND
+          : CRON_COMMENTS_SYSTEM_INSTRUCTION_YOUTUBE;
       threadTitle =
         youtubeTitle.trim() || "【実況】YouTube動画の感想スレ";
       keyFeaturesLines = [
@@ -621,6 +652,83 @@ export async function GET(req: Request) {
               `- 概要欄: ${youtubeDescription.substring(0, 500)}${youtubeDescription.length > 500 ? "..." : ""}`,
             ]
           : []),
+      ];
+    } else if (sourceType === "trend") {
+      // トレンド・商品特化型: ECサイト等の商品情報＋コンテキスト（実況コメント・番組情報）を元に生成
+      const extractionPrompt = `
+      以下のWebページのテキストから、最も重要な「商品」または「セール情報」を1つ抽出してください。
+      数値（価格、割引率など）はテキストに明記されているもの以外、絶対に創作しないでください。
+
+      Webページテキスト:
+      "${scrapedText.substring(0, 10000)}"
+    `;
+
+      const extractionSystemInstruction = `
+      あなたは厳格なデータ抽出AIです。
+      【LP対策】テキスト情報が極端に少ない場合、画像データ（imagePart）を最優先の情報源としてください。画像内に「脱毛器」「Ulike」「MAX57%OFF」などの文字があれば、それを商品のコア情報として認識し抽出結果に反映してください。
+      画像データが提供された場合、画像内に書かれているキャッチコピー、数字（割引率、出力W数、容量、サイズなど）、およびデザインの特徴を視覚的に読み取ってください。読み取った具体的な情報も抽出結果に反映してください。
+      出力は必ず以下のJSONフォーマットのみを返してください。Markdownのコードブロックは不要です。
+      {
+        "product_name": "商品名（必須・具体的に）",
+        "manufacturer": "メーカー名・ブランド名（例: Anker, Dyson, Apple）（不明なら空文字）",
+        "model_number": "型番（例: A1234, PowerCore 10000）（不明なら空文字）",
+        "price": "価格（例: 9,800円、30%OFF）（不明なら空文字）",
+        "selling_point": "魅力的なポイントや特徴（50文字以内）",
+        "key_specs": "主なスペック・数値・特徴（例: 10000mAh、軽量150g、M3チップ）（50文字以内、不明なら空文字）"
+      }
+    `;
+
+      const extractionJsonStr = await generateJSON(
+        extractionPrompt,
+        extractionSystemInstruction,
+        imagePart ?? undefined
+      );
+
+      const cleanedJsonStr = extractionJsonStr
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      const parsed = JSON.parse(cleanedJsonStr) as Partial<ExtractedProduct>;
+
+      const extracted: ExtractedProduct = {
+        product_name:
+          String(parsed.product_name ?? "").trim() || "このページの注目商品",
+        manufacturer: String(parsed.manufacturer ?? "").trim(),
+        model_number: String(parsed.model_number ?? "").trim(),
+        price: parsed.price == null ? "" : String(parsed.price).trim(),
+        selling_point:
+          String(parsed.selling_point ?? "").trim() ||
+          "ページで紹介されている目玉商品・キャンペーンです。",
+        key_specs: String(parsed.key_specs ?? "").trim(),
+      };
+
+      productInfoForComments = buildProductInfoForComments(extracted, rawUrl);
+      const affiliateText = topic.affiliate_text?.trim() || null;
+      if (affiliateText) {
+        productInfoForComments = `【確定商品情報・楽天公式説明（最優先）】\n${affiliateText}\n\n${productInfoForComments}`;
+      }
+      if (rakutenDetails) {
+        productInfoForComments += `\n\n【公式商品説明】\n${rakutenDetails}`;
+      }
+      if (topic.context) {
+        productInfoForComments += `\n\n【重要：実況コメント・番組情報（スレッド生成の核）】\nユーザー提供のコンテキストを元に、視聴者や主婦層がリアルに盛り上がっている口コミ風レスを生成してください：\n"${topic.context}"`;
+      }
+      commentsSystemInstruction = CRON_COMMENTS_SYSTEM_INSTRUCTION_TREND;
+      threadTitle = await generateThreadTitle(
+        extracted,
+        topic.context,
+        imagePart,
+        affiliateText
+      );
+      keyFeaturesLines = [
+        "【トレンド商品情報】",
+        `- 商品/キャンペーン名: ${extracted.product_name}`,
+        ...(extracted.manufacturer ? [`- メーカー: ${extracted.manufacturer}`] : []),
+        ...(extracted.model_number ? [`- 型番: ${extracted.model_number}`] : []),
+        ...(extracted.price ? [`- 価格: ${extracted.price}`] : []),
+        ...(extracted.key_specs ? [`- 主なスペック: ${extracted.key_specs}`] : []),
+        `- 推しポイント: ${extracted.selling_point}`,
       ];
     } else {
       // ECサイト: 既存の商品抽出ロジック

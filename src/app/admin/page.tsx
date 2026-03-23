@@ -138,6 +138,7 @@ export default function AdminPage() {
   const [scrapeFailedMessage, setScrapeFailedMessage] = useState<string | null>(null);
   const [fallbackText, setFallbackText] = useState("");
   const [fallbackMode, setFallbackMode] = useState(false);
+  const [sourceType, setSourceType] = useState<"youtube" | "trend">("youtube");
   const [queueList, setQueueList] = useState<TopicQueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
   const [isFetchingTitle, setIsFetchingTitle] = useState(false);
@@ -211,6 +212,7 @@ export default function AdminPage() {
           affiliate_url: affiliateUrl.trim() || undefined,
           image_url: imageUrl.trim() || undefined,
           context: context.trim() || undefined,
+          source_type: sourceType,
         }),
       });
       const data = await res.json();
@@ -471,6 +473,35 @@ export default function AdminPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                ソース種別
+              </label>
+              <div className="flex gap-4">
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <input
+                    type="radio"
+                    name="sourceType"
+                    value="youtube"
+                    checked={sourceType === "youtube"}
+                    onChange={() => setSourceType("youtube")}
+                    className="h-4 w-4 border-slate-300 text-slate-600 focus:ring-slate-500"
+                  />
+                  <span className="text-sm text-slate-700">YouTube動画</span>
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <input
+                    type="radio"
+                    name="sourceType"
+                    value="trend"
+                    checked={sourceType === "trend"}
+                    onChange={() => setSourceType("trend")}
+                    className="h-4 w-4 border-slate-300 text-slate-600 focus:ring-slate-500"
+                  />
+                  <span className="text-sm text-slate-700">トレンド・商品</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
                 商品名 / 管理用メモ（必須）
               </label>
               <input
@@ -485,14 +516,20 @@ export default function AdminPage() {
             <div>
               <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-700">
                 <Link2 className="h-4 w-4" />
-                商品ページURL または 楽天アフィリエイトHTMLタグ（必須）
+                {sourceType === "trend"
+                  ? "アフィリエイトリンク（または商品URL）（必須）"
+                  : "商品ページURL または 楽天アフィリエイトHTMLタグ（必須）"}
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder={'URL または楽天 <a href="...">テキスト</a> タグ'}
+                  placeholder={
+                    sourceType === "trend"
+                      ? "https://..."
+                      : 'URL または楽天 <a href="...">テキスト</a> タグ'
+                  }
                   className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
                 />
                 <button
@@ -553,7 +590,11 @@ export default function AdminPage() {
               <textarea
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
-                placeholder="例：ReFa vs Dysonの比較。ReFaのコスパを褒める流れにして。"
+                placeholder={
+                  sourceType === "trend"
+                    ? "例: マツコの知らない世界で紹介された〇〇。実況民が『絶対買う』と盛り上がっている風に"
+                    : "例：ReFa vs Dysonの比較。ReFaのコスパを褒める流れにして。"
+                }
                 rows={3}
                 className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
               />

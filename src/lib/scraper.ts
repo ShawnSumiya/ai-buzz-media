@@ -87,7 +87,7 @@ interface YouTubeOEmbedResponse {
 }
 
 /** YouTube専用: oEmbed APIでメタデータ（タイトル・サムネイル）を取得し、字幕を組み合わせて返す */
-async function scrapeYouTubeMetadata(url: string) {
+async function scrapeYouTubeMetadata(url: string, skipTranscript?: boolean) {
   try {
     // 1. oEmbed API でタイトルとサムネイルを取得（HTMLパースに頼らない）
     const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
@@ -101,8 +101,8 @@ async function scrapeYouTubeMetadata(url: string) {
     const title = oembedData.title?.replace(/\s+/g, ' ').trim() || '（タイトル取得なし）';
     const ogImage = oembedData.thumbnail_url || null;
 
-    // 2. 字幕（トランスクリプト）の取得 — RapidAPI経由、失敗しても全体を止めない
-    const transcriptText = await fetchYouTubeTranscriptViaRapidAPI(url);
+    // 2. 字幕（トランスクリプト）の取得 — RapidAPI経由。skipTranscript 時は完全にスキップ
+    const transcriptText = skipTranscript ? '' : await fetchYouTubeTranscriptViaRapidAPI(url);
 
     // 3. 返り値の構成: title + transcriptText をマージ
     const parts: string[] = [title];
@@ -131,13 +131,18 @@ async function scrapeYouTubeMetadata(url: string) {
   }
 }
 
-export async function scrapePageText(url: string) {
+export interface ScrapePageTextOptions {
+  /** true の場合、YouTube の文字起こし取得を完全にスキップ（source_type === 'trend' 用） */
+  skipTranscript?: boolean;
+}
+
+export async function scrapePageText(url: string, options?: ScrapePageTextOptions) {
   try {
     console.log(`Checking URL: ${url}`); // ログ追加
 
     // YouTube URL の場合は専用処理に分岐
     if (isYouTubeUrl(url)) {
-      return scrapeYouTubeMetadata(url);
+      return scrapeYouTubeMetadata(url, options?.skipTranscript);
     }
 
     const response = await fetch(url, {

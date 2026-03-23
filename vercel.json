@@ -10,6 +10,22 @@
     {
       "path": "/api/cron/extend-thread",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/trend-monitor",
+      "schedule": "*/5 23,0 * * 0-4"
+    },
+    {
+      "path": "/api/cron/trend-monitor",
+      "schedule": "*/5 11-13 * * 2"
+    },
+    {
+      "path": "/api/cron/trend-monitor",
+      "schedule": "*/5 14-15 * * 4"
+    },
+    {
+      "path": "/api/cron/trend-monitor",
+      "schedule": "*/5 22,23,0 * * 5"
     }
   ]
 }
