@@ -3,24 +3,51 @@ import type { TranscriptTurn } from "@/types/promo";
 type ThreadChatProps = {
   transcript: TranscriptTurn[];
   productName?: string;
+  /** 終了済みスレでは閲覧のみ（将来の投稿UI用のヒント文言を表示） */
+  isClosed?: boolean;
 };
 
-export function ThreadChat({ transcript, productName }: ThreadChatProps) {
+export function ThreadChat({
+  transcript,
+  productName,
+  isClosed = false,
+}: ThreadChatProps) {
   if (!transcript || transcript.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/60 px-6 py-10 text-center">
-        <p className="text-sm font-medium text-slate-700">
-          まだコメントがありません。
-        </p>
-        <p className="text-xs text-slate-400">
-          まもなく「{productName ?? "この商品"}」について会話が盛り上がります。
-        </p>
+        {isClosed ? (
+          <>
+            <p className="text-sm font-medium text-slate-700">
+              このスレッドは過去ログとして終了しています。
+            </p>
+            <p className="text-xs text-slate-500">
+              新規コメントの投稿はできません。
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-slate-700">
+              まだコメントがありません。
+            </p>
+            <p className="text-xs text-slate-400">
+              まもなく「{productName ?? "この商品"}」について会話が盛り上がります。
+            </p>
+          </>
+        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {isClosed && (
+        <p
+          className="rounded-lg border border-slate-200 bg-slate-100/80 px-3 py-2 text-center text-xs text-slate-600"
+          role="status"
+        >
+          このスレッドは過去ログのため、新規コメントの投稿はできません。
+        </p>
+      )}
       {transcript.map((turn) => (
         <article
           key={turn.id}

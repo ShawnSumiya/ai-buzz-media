@@ -58,7 +58,7 @@ export async function GET(req: Request) {
     const { data: rows, error: fetchError } = await supabase
       .from("promo_threads")
       .select("id, product_name, key_features, transcript, created_at")
-      .not("is_closed", "eq", true)
+      .eq("is_closed", false)
       .order("created_at", { ascending: false })
       .limit(1);
 
@@ -101,13 +101,15 @@ export async function GET(req: Request) {
     const updatedTranscript = [...transcript, ...newComments];
 
     // 4. DB を更新（transcript と updated_at を更新）
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from("promo_threads")
       .update({
         transcript: updatedTranscript,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", thread.id);
+      .eq("id", thread.id)
+      .eq("is_closed", false)
+      .select("id");
 
     if (updateError) {
       console.error("cron/extend-thread Supabase update error:", updateError);
@@ -115,6 +117,14 @@ export async function GET(req: Request) {
         { error: "transcript の更新に失敗しました。" },
         { status: 500 }
       );
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      return NextResponse.json({
+        status: "skipped_closed",
+        thread_id: thread.id,
+        message: "取得後にスレッドが終了されたため追記をスキップしました。",
+      });
     }
 
     return NextResponse.json({

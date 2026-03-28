@@ -466,6 +466,7 @@ export async function GET(req: Request) {
       const { data: threads, error: threadsError } = await supabase
         .from("promo_threads")
         .select("id, product_name, key_features, transcript, created_at")
+        .eq("is_closed", false)
         .limit(100);
 
       if (threadsError) {
@@ -479,7 +480,8 @@ export async function GET(req: Request) {
       if (!threads || threads.length === 0) {
         return NextResponse.json({
           status: "no_thread",
-          message: "promo_threads にスレッドが存在しません。",
+          message:
+            "追記対象のオープンスレッドがありません（終了済みのみ、またはスレッド未作成）。",
         });
       }
 
@@ -516,13 +518,15 @@ export async function GET(req: Request) {
 
       const updatedTranscript = [...transcript, ...newComments];
 
-      const { error: updateError } = await supabase
+      const { data: updatedRows, error: updateError } = await supabase
         .from("promo_threads")
         .update({
           transcript: updatedTranscript,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", thread.id);
+        .eq("id", thread.id)
+        .eq("is_closed", false)
+        .select("id");
 
       if (updateError) {
         console.error(
@@ -533,6 +537,14 @@ export async function GET(req: Request) {
           { error: "transcript の更新に失敗しました。" },
           { status: 500 }
         );
+      }
+
+      if (!updatedRows || updatedRows.length === 0) {
+        return NextResponse.json({
+          status: "skipped_closed",
+          thread_id: thread.id,
+          message: "取得後にスレッドが終了されたため追記をスキップしました。",
+        });
       }
 
       return NextResponse.json({

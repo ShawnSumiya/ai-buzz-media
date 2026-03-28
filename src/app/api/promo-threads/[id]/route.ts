@@ -51,7 +51,9 @@ export async function GET(
 
     const { data: row, error } = await supabase
       .from("promo_threads")
-      .select("id, product_name, source_url, affiliate_url, key_features, og_image_url, transcript, created_at")
+      .select(
+        "id, product_name, source_url, affiliate_url, key_features, og_image_url, transcript, created_at, is_closed"
+      )
       .eq("id", id)
       .single();
 

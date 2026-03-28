@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     // Step 1: スレッド情報と最新の transcript を取得
     const { data: row, error: fetchError } = await supabase
       .from("promo_threads")
-      .select("id, product_name, key_features, transcript")
+      .select("id, product_name, key_features, transcript, is_closed")
       .eq("id", threadId)
       .single();
 
@@ -64,6 +64,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "スレッドが見つかりません" },
         { status: 404 }
+      );
+    }
+
+    if (row.is_closed === true) {
+      return NextResponse.json(
+        { error: "このスレッドは終了済みのためコメントを追加できません" },
+        { status: 403 }
       );
     }
 
@@ -89,19 +96,28 @@ export async function POST(request: NextRequest) {
     const updatedTranscript = [...transcript, ...newComments];
 
     // Step 3: DBに追記（transcript と updated_at を更新）
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from("promo_threads")
       .update({
         transcript: updatedTranscript,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", threadId);
+      .eq("id", threadId)
+      .eq("is_closed", false)
+      .select("id");
 
     if (updateError) {
       console.error("append-comments Supabase update error:", updateError);
       return NextResponse.json(
         { error: "コメントの保存に失敗しました" },
         { status: 500 }
+      );
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      return NextResponse.json(
+        { error: "このスレッドは終了済みのためコメントを追加できません" },
+        { status: 403 }
       );
     }
 

@@ -224,12 +224,8 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
           <ThreadChat
             transcript={thread.transcript ?? []}
             productName={thread.product_name}
+            isClosed={thread.is_closed === true}
           />
-          {thread.is_closed === true && (
-            <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-medium text-amber-800">
-              このスレッドは過去ログ倉庫に格納されています。
-            </div>
-          )}
         </section>
 
         <div className="mt-10 flex justify-center">
